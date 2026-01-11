@@ -257,17 +257,24 @@ function togglePanel(event) {
         event.stopPropagation();
     }
     
+    const panel = document.getElementById('chat-tracker-panel');
     const content = document.getElementById('tracker-content');
     const arrow = document.querySelector('.toggle-arrow');
     
     isCollapsed = !isCollapsed;
-    
     if (content) {
         content.style.display = isCollapsed ? 'none' : 'block';
-    }
+        if (panel) {
+            if (isCollapsed) panel.classList.add('collapsed');
+            else panel.classList.remove('collapsed');
+        }
+    }    
     if (arrow) {
         arrow.textContent = isCollapsed ? '▲' : '▼';
-    }
+        arrow.style.transform = isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+    }  
+    saveState();
+}
     
     saveState();
 }
@@ -826,13 +833,27 @@ function loadPosition(element) {
 
 function makeDraggable(element) {
     let isDragging = false;
-let startClickX, startClickY; 
+    let startClickX, startClickY;
+    let startX = 0, startY = 0;
+    let currentX = 0, currentY = 0;
+    let rafId = null;
+    try {
+        const saved = localStorage.getItem('chatTracker_pos_v2');
+        if (saved) {
+            const pos = JSON.parse(saved);
+            currentX = pos.x;
+            currentY = pos.y;
+            element.style.transform = `translate(${currentX}px, ${currentY}px)`;
+        }
+    } catch (e) {}
 
     const onStart = (clientX, clientY) => {
+        if (event.target.closest('button') || event.target.closest('input')) return;
+
         isDragging = true;
         element.classList.remove('snapping');
         
-        startClickX = clientX; /
+        startClickX = clientX;
         startClickY = clientY;
         
         startX = clientX - currentX;
@@ -845,7 +866,7 @@ let startClickX, startClickY;
         if (!isDragging) return;
         
         const dist = Math.sqrt(Math.pow(clientX - startClickX, 2) + Math.pow(clientY - startClickY, 2));
-        
+    
         if (dist < 5) return; 
 
         element.dataset.justDragged = 'true'; 
@@ -860,37 +881,25 @@ let startClickX, startClickY;
     const onEnd = () => {
         if (!isDragging) return;
         isDragging = false;
-        element.classList.add('snapping');
-        localStorage.setItem('chatTracker_pos_v2', JSON.stringify({ x: currentX, y: currentY }));
-        
-        setTimeout(() => {
-            element.dataset.justDragged = 'false';
-        }, 150); 
-    };
-
-    const onEnd = () => {
-        if (!isDragging) return;
-        isDragging = false;
         element.style.cursor = 'grab';
         element.classList.add('snapping');
 
         localStorage.setItem('chatTracker_pos_v2', JSON.stringify({ x: currentX, y: currentY }));
         
-        element.dataset.justDragged = 'true';
-        setTimeout(() => element.dataset.justDragged = 'false', 100);
+        setTimeout(() => {
+             element.dataset.justDragged = 'false';
+        }, 100);
     };
 
     element.addEventListener('mousedown', (e) => {
-        if (e.target.closest('button') || e.target.closest('input')) return;
         onStart(e.clientX, e.clientY);
     });
     window.addEventListener('mousemove', (e) => onMove(e.clientX, e.clientY));
     window.addEventListener('mouseup', onEnd);
-
     element.addEventListener('touchstart', (e) => {
-        if (e.target.closest('button') || e.target.closest('input')) return;
         onStart(e.touches[0].clientX, e.touches[0].clientY);
     }, { passive: false });
+    
     window.addEventListener('touchmove', (e) => {
         if (isDragging) {
             if (e.cancelable) e.preventDefault();

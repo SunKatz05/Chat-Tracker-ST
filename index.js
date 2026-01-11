@@ -22,14 +22,13 @@ function injectMobileStyles() {
             user-select: none !important;
             -webkit-user-select: none !important;
             cursor: grab;
+            position: fixed !important;
+            z-index: 9999 !important;
         }
         .chat-tracker-panel:active {
             cursor: grabbing;
         }
-        .chat-tracker-panel button, 
-        .chat-tracker-panel input {
-            touch-action: auto !important;
-        }
+        .chat-tracker-panel button { touch-action: auto !important; }
     `;
     document.head.appendChild(style);
 }

@@ -252,31 +252,25 @@ function createTrackerPanel() {
 }
 
 function togglePanel(event) {
-    if (event) event.stopPropagation();
-
-    const panel = document.getElementById('chat-tracker-panel');
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    
     const content = document.getElementById('tracker-content');
     const arrow = document.querySelector('.toggle-arrow');
-
-    if (!panel || !content) return;
-
+    
     isCollapsed = !isCollapsed;
-    const animateDurationMs = 320;
-
-    if (isCollapsed) {
-        panel.classList.add('collapsed');
-        content.style.maxHeight = `${content.scrollHeight}px`;
-        content.style.opacity = '1';
-        content.offsetHeight;
-
-        requestAnimationFrame(() => {
-            content.style.maxHeight = '0px';
-            content.style.opacity = '0';
-            panel.style.width = '32px';
-            panel.style.height = '32px';
-            panel.style.padding = '0px';
-            if (arrow) arrow.style.transform = 'rotate(-90deg)';
-        });
+    
+    if (content) {
+        content.style.display = isCollapsed ? 'none' : 'block';
+    }
+    if (arrow) {
+        arrow.textContent = isCollapsed ? '▲' : '▼';
+    }
+    
+    saveState();
+}
 
         setTimeout(() => {
             panel.style.width = '';
@@ -323,10 +317,12 @@ function togglePanel(event) {
     saveState();
 }
 
-function handlePanelClick() {
+function handlePanelClick(e) {
     const panel = document.getElementById('chat-tracker-panel');
-    if (panel && panel.dataset.justDragged === 'true') return;
-    if (isCollapsed) togglePanel();
+    if (e.target.closest('button')) return;
+    if (isCollapsed && panel.dataset.justDragged !== 'true') {
+        togglePanel(e);
+    }
 }
 
 function setupEventListeners() {
@@ -830,23 +826,14 @@ function loadPosition(element) {
 
 function makeDraggable(element) {
     let isDragging = false;
-    let startX, startY;
-    let currentX = 0, currentY = 0;
-    let initialX = 0, initialY = 0;
-    let rafId = null;
-
-    const saved = localStorage.getItem('chatTracker_pos_v2');
-    if (saved) {
-        const pos = JSON.parse(saved);
-        currentX = pos.x;
-        currentY = pos.y;
-        element.style.transform = `translate(${currentX}px, ${currentY}px)`;
-    }
+let startClickX, startClickY; 
 
     const onStart = (clientX, clientY) => {
         isDragging = true;
         element.classList.remove('snapping');
-        element.style.cursor = 'grabbing';
+        
+        startClickX = clientX; /
+        startClickY = clientY;
         
         startX = clientX - currentX;
         startY = clientY - currentY;
@@ -857,16 +844,28 @@ function makeDraggable(element) {
     const onMove = (clientX, clientY) => {
         if (!isDragging) return;
         
+        const dist = Math.sqrt(Math.pow(clientX - startClickX, 2) + Math.pow(clientY - startClickY, 2));
+        
+        if (dist < 5) return; 
+
+        element.dataset.justDragged = 'true'; 
+
         rafId = requestAnimationFrame(() => {
             currentX = clientX - startX;
             currentY = clientY - startY;
-            
-            const rect = element.getBoundingClientRect();
-            const maxX = window.innerWidth - rect.width;
-            const maxY = window.innerHeight - rect.height;
-            
             element.style.transform = `translate(${currentX}px, ${currentY}px)`;
         });
+    };
+
+    const onEnd = () => {
+        if (!isDragging) return;
+        isDragging = false;
+        element.classList.add('snapping');
+        localStorage.setItem('chatTracker_pos_v2', JSON.stringify({ x: currentX, y: currentY }));
+        
+        setTimeout(() => {
+            element.dataset.justDragged = 'false';
+        }, 150); 
     };
 
     const onEnd = () => {

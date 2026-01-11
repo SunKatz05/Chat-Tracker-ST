@@ -320,9 +320,6 @@ function handlePanelClick() {
     if (panel && panel.dataset.justDragged === 'true') return;
     if (isCollapsed) togglePanel();
 }
- 
-    if (isCollapsed) togglePanel();
-}
 
 function setupEventListeners() {
     try {

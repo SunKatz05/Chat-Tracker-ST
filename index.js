@@ -640,7 +640,7 @@ function openLimitEditor(event) {
         <h3>Set Custom Token Limit</h3>
         <div class="limit-editor-input-group">
             <label for="limit-input">Token Limit (32,000 - 100,000):</label>
-            <input type="number" id="limit-input" class="limit-editor-input" value="${maxTokens}" min="32000" max="100000" placeholder="50000" required>
+            <input type="number" id="limit-input" class="limit-editor-input" value="${maxTokens}" min="0" max="128000" placeholder="50000" required>
             <span class="input-hint">Default: 50,000 tokens</span>
         </div>
         <div class="limit-editor-buttons">
@@ -663,7 +663,7 @@ function openLimitEditor(event) {
 
     function validateInput(value) {
         const num = parseInt(value);
-        return !isNaN(num) && num >= 32000 && num <= 100000;
+        return !isNaN(num) && num >= 0 && num <= 128000;
     }
 
     function showError(message) {
@@ -695,7 +695,7 @@ function openLimitEditor(event) {
         }
 
         if (!validateInput(value)) {
-            showError('Value must be between 32,000 and 100,000');
+            showError('Value must be between 0 and 128,000');
             return;
         }
 
@@ -728,7 +728,7 @@ function loadMaxTokens() {
         const saved = localStorage.getItem('chatTrackerMaxTokens');
         if (saved !== null) {
             const value = parseInt(saved);
-            if (!isNaN(value) && value >= 32000 && value <= 100000) {
+            if (!isNaN(value) && value >= 0 && value <= 128000) {
                 maxTokens = value;
             }
         }

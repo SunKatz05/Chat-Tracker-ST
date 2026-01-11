@@ -447,7 +447,7 @@ body.light-theme .limit-editor-cancel:hover {
 
 @media (max-width: 768px) {
     .chat-tracker-panel {
-        top: 20px;
+        top: 25px;
         left: 5px;
         width: 160px;
         padding: 4px;

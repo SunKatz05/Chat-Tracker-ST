@@ -12,6 +12,28 @@ let tokenUiObserverRetries = 0;
 
 let maxTokens = 50000;
 
+function injectMobileStyles() {
+    if (document.getElementById('chat-tracker-mobile-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'chat-tracker-mobile-styles';
+    style.innerHTML = `
+        .chat-tracker-panel {
+            touch-action: none !important;
+            user-select: none !important;
+            -webkit-user-select: none !important;
+            cursor: grab;
+        }
+        .chat-tracker-panel:active {
+            cursor: grabbing;
+        }
+        .chat-tracker-panel button, 
+        .chat-tracker-panel input {
+            touch-action: auto !important;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
 const CHAT_TRACKER_DEBUG = true;
 
 function debugLog(...args) {
@@ -162,6 +184,7 @@ function waitForSillyTavernReady() {
 }
 
 function createTrackerPanel() {
+    injectMobileStyles();
     try {
         if (document.getElementById('chat-tracker-panel')) return;
         
@@ -214,6 +237,10 @@ function createTrackerPanel() {
 
         const editLimitBtn = document.getElementById('edit-limit-btn');
         if (editLimitBtn) editLimitBtn.addEventListener('click', openLimitEditor);
+        
+        loadPosition(panel);
+        makeDraggable(panel);
+        
     } catch (error) {}
 }
 
@@ -290,6 +317,11 @@ function togglePanel(event) {
 }
 
 function handlePanelClick() {
+    const panel = document.getElementById('chat-tracker-panel');
+    if (panel && panel.dataset.justDragged === 'true') {
+        return;
+    }
+ 
     if (isCollapsed) togglePanel();
 }
 
@@ -773,4 +805,93 @@ function loadState() {
         }
         loadMaxTokens();
     } catch (error) {}
+}
+
+function makeDraggable(element) {
+    let isDragging = false;
+    let startX, startY, initialLeft, initialTop;
+    const snapThreshold = 20; 
+    let hasMoved = false;
+    const onStart = (clientX, clientY) => {
+        isDragging = true;
+        hasMoved = false;
+        const rect = element.getBoundingClientRect();
+        startX = clientX;
+        startY = clientY;
+        initialLeft = rect.left;
+        initialTop = rect.top;
+        element.style.right = 'auto';
+        element.style.bottom = 'auto';
+        element.style.left = `${initialLeft}px`;
+        element.style.top = `${initialTop}px`;
+        element.style.cursor = 'grabbing';
+        document.body.style.userSelect = 'none';
+    };
+    const onMove = (clientX, clientY) => {
+        if (!isDragging) return;
+
+        const dx = clientX - startX;
+        const dy = clientY - startY;
+       
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+            hasMoved = true;
+        }
+
+        let newLeft = initialLeft + dx;
+        let newTop = initialTop + dy;
+
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+        const rect = element.getBoundingClientRect();
+       
+        if (newLeft < snapThreshold) newLeft = 0;
+        else if (newLeft + rect.width > windowWidth - snapThreshold) newLeft = windowWidth - rect.width;
+
+        if (newTop < snapThreshold) newTop = 0;
+        else if (newTop + rect.height > windowHeight - snapThreshold) newTop = windowHeight - rect.height;
+
+        element.style.left = `${newLeft}px`;
+        element.style.top = `${newTop}px`;
+    };
+    
+    const onEnd = () => {
+        if (!isDragging) return;
+        isDragging = false;
+        
+        element.style.cursor = '';
+        document.body.style.userSelect = '';
+        savePosition(element.style.left, element.style.top);
+        
+        if (hasMoved) {
+            element.dataset.justDragged = 'true';
+            setTimeout(() => { element.dataset.justDragged = 'false'; }, 50);
+        }
+    };
+
+element.addEventListener('mousedown', (e) => {
+        if (e.target.closest('button') || e.target.closest('input')) return;
+        onStart(e.clientX, e.clientY);
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (isDragging) onMove(e.clientX, e.clientY);
+    });
+ 
+    window.addEventListener('mouseup', onEnd);
+    
+    element.addEventListener('touchstart', (e) => {
+        if (e.target.closest('button') || e.target.closest('input')) return;
+        const touch = e.touches[0];
+        onStart(touch.clientX, touch.clientY);
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+        if (isDragging) {
+            if (e.cancelable) e.preventDefault();
+            const touch = e.touches[0];
+            onMove(touch.clientX, touch.clientY);
+        }
+    }, { passive: false });
+
+    window.addEventListener('touchend', onEnd);
 }

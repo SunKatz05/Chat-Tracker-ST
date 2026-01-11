@@ -317,9 +317,9 @@ function togglePanel(event) {
 
 function handlePanelClick() {
     const panel = document.getElementById('chat-tracker-panel');
-    if (panel && panel.dataset.justDragged === 'true') {
-        return;
-    }
+    if (panel && panel.dataset.justDragged === 'true') return;
+    if (isCollapsed) togglePanel();
+}
  
     if (isCollapsed) togglePanel();
 }
@@ -806,11 +806,29 @@ function loadState() {
     } catch (error) {}
 }
 
+function savePosition(left, top) {
+    localStorage.setItem('chatTracker_pos', JSON.stringify({ left, top }));
+}
+
+function loadPosition(element) {
+    try {
+        const saved = localStorage.getItem('chatTracker_pos');
+        if (saved) {
+            const pos = JSON.parse(saved);
+            element.style.left = pos.left;
+            element.style.top = pos.top;
+            element.style.right = 'auto';
+            element.style.bottom = 'auto';
+        }
+    } catch (e) {}
+}
+
 function makeDraggable(element) {
     let isDragging = false;
     let startX, startY, initialLeft, initialTop;
-    const snapThreshold = 20; 
+    const snapThreshold = 25;
     let hasMoved = false;
+
     const onStart = (clientX, clientY) => {
         isDragging = true;
         hasMoved = false;
@@ -819,78 +837,54 @@ function makeDraggable(element) {
         startY = clientY;
         initialLeft = rect.left;
         initialTop = rect.top;
-        element.style.right = 'auto';
-        element.style.bottom = 'auto';
-        element.style.left = `${initialLeft}px`;
-        element.style.top = `${initialTop}px`;
         element.style.cursor = 'grabbing';
-        document.body.style.userSelect = 'none';
     };
+
     const onMove = (clientX, clientY) => {
         if (!isDragging) return;
-
         const dx = clientX - startX;
         const dy = clientY - startY;
-       
-        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-            hasMoved = true;
-        }
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
 
         let newLeft = initialLeft + dx;
         let newTop = initialTop + dy;
 
-        const windowWidth = window.innerWidth;
-        const windowHeight = window.innerHeight;
-        const rect = element.getBoundingClientRect();
-       
         if (newLeft < snapThreshold) newLeft = 0;
-        else if (newLeft + rect.width > windowWidth - snapThreshold) newLeft = windowWidth - rect.width;
-
+        else if (newLeft + element.offsetWidth > window.innerWidth - snapThreshold) newLeft = window.innerWidth - element.offsetWidth;
         if (newTop < snapThreshold) newTop = 0;
-        else if (newTop + rect.height > windowHeight - snapThreshold) newTop = windowHeight - rect.height;
+        else if (newTop + element.offsetHeight > window.innerHeight - snapThreshold) newTop = window.innerHeight - element.offsetHeight;
 
-        element.style.left = `${newLeft}px`;
-        element.style.top = `${newTop}px`;
+        element.style.left = newLeft + 'px';
+        element.style.top = newTop + 'px';
     };
-    
+
     const onEnd = () => {
         if (!isDragging) return;
         isDragging = false;
-        
-        element.style.cursor = '';
-        document.body.style.userSelect = '';
+        element.style.cursor = 'grab';
         savePosition(element.style.left, element.style.top);
-        
         if (hasMoved) {
             element.dataset.justDragged = 'true';
-            setTimeout(() => { element.dataset.justDragged = 'false'; }, 50);
+            setTimeout(() => element.dataset.justDragged = 'false', 50);
         }
     };
 
-element.addEventListener('mousedown', (e) => {
+    element.addEventListener('mousedown', (e) => {
         if (e.target.closest('button') || e.target.closest('input')) return;
         onStart(e.clientX, e.clientY);
     });
-
-    window.addEventListener('mousemove', (e) => {
-        if (isDragging) onMove(e.clientX, e.clientY);
-    });
- 
+    window.addEventListener('mousemove', (e) => onMove(e.clientX, e.clientY));
     window.addEventListener('mouseup', onEnd);
-    
+
     element.addEventListener('touchstart', (e) => {
         if (e.target.closest('button') || e.target.closest('input')) return;
-        const touch = e.touches[0];
-        onStart(touch.clientX, touch.clientY);
+        onStart(e.touches[0].clientX, e.touches[0].clientY);
     }, { passive: false });
-
     window.addEventListener('touchmove', (e) => {
         if (isDragging) {
             if (e.cancelable) e.preventDefault();
-            const touch = e.touches[0];
-            onMove(touch.clientX, touch.clientY);
+            onMove(e.touches[0].clientX, e.touches[0].clientY);
         }
     }, { passive: false });
-
     window.addEventListener('touchend', onEnd);
 }

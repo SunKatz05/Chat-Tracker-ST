@@ -17,13 +17,21 @@ function injectMobileStyles() {
     const style = document.createElement('style');
     style.id = 'chat-tracker-mobile-styles';
     style.innerHTML = `
-        .chat-tracker-panel {
+.chat-tracker-panel {
             touch-action: none !important;
             user-select: none !important;
             -webkit-user-select: none !important;
             cursor: grab;
             position: fixed !important;
             z-index: 9999 !important;
+            will-change: transform; /* Подготовка видеокарты для плавности */
+            transition: none;
+            background: rgba(0,0,0,0.8); /* Если стилей нет в CSS, это поможет увидеть иконку */
+            border-radius: 8px;
+            padding: 5px;
+        }
+        .chat-tracker-panel.snapping {
+            transition: transform 0.2s ease-out; /* Плавный досыл */
         }
         .chat-tracker-panel:active {
             cursor: grabbing;
@@ -822,48 +830,55 @@ function loadPosition(element) {
 
 function makeDraggable(element) {
     let isDragging = false;
-    let startX, startY, initialLeft, initialTop;
-    const snapThreshold = 25;
-    let hasMoved = false;
+    let startX, startY;
+    let currentX = 0, currentY = 0;
+    let initialX = 0, initialY = 0;
+    let rafId = null;
+
+    const saved = localStorage.getItem('chatTracker_pos_v2');
+    if (saved) {
+        const pos = JSON.parse(saved);
+        currentX = pos.x;
+        currentY = pos.y;
+        element.style.transform = `translate(${currentX}px, ${currentY}px)`;
+    }
 
     const onStart = (clientX, clientY) => {
         isDragging = true;
-        hasMoved = false;
-        const rect = element.getBoundingClientRect();
-        startX = clientX;
-        startY = clientY;
-        initialLeft = rect.left;
-        initialTop = rect.top;
+        element.classList.remove('snapping');
         element.style.cursor = 'grabbing';
+        
+        startX = clientX - currentX;
+        startY = clientY - currentY;
+        
+        if (rafId) cancelAnimationFrame(rafId);
     };
 
     const onMove = (clientX, clientY) => {
         if (!isDragging) return;
-        const dx = clientX - startX;
-        const dy = clientY - startY;
-        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
-
-        let newLeft = initialLeft + dx;
-        let newTop = initialTop + dy;
-
-        if (newLeft < snapThreshold) newLeft = 0;
-        else if (newLeft + element.offsetWidth > window.innerWidth - snapThreshold) newLeft = window.innerWidth - element.offsetWidth;
-        if (newTop < snapThreshold) newTop = 0;
-        else if (newTop + element.offsetHeight > window.innerHeight - snapThreshold) newTop = window.innerHeight - element.offsetHeight;
-
-        element.style.left = newLeft + 'px';
-        element.style.top = newTop + 'px';
+        
+        rafId = requestAnimationFrame(() => {
+            currentX = clientX - startX;
+            currentY = clientY - startY;
+            
+            const rect = element.getBoundingClientRect();
+            const maxX = window.innerWidth - rect.width;
+            const maxY = window.innerHeight - rect.height;
+            
+            element.style.transform = `translate(${currentX}px, ${currentY}px)`;
+        });
     };
 
     const onEnd = () => {
         if (!isDragging) return;
         isDragging = false;
         element.style.cursor = 'grab';
-        savePosition(element.style.left, element.style.top);
-        if (hasMoved) {
-            element.dataset.justDragged = 'true';
-            setTimeout(() => element.dataset.justDragged = 'false', 50);
-        }
+        element.classList.add('snapping');
+
+        localStorage.setItem('chatTracker_pos_v2', JSON.stringify({ x: currentX, y: currentY }));
+        
+        element.dataset.justDragged = 'true';
+        setTimeout(() => element.dataset.justDragged = 'false', 100);
     };
 
     element.addEventListener('mousedown', (e) => {

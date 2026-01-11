@@ -1,0 +1,13 @@
+{
+    "name": "chat-tracker",
+    "display_name": "Chat Tracker",
+    "version": "1.0.0",
+    "description": "Compact collapsible panel showing message count, last hidden message, and token usage",
+    "author": "Sunrize",
+    "loading_order": 20,
+    "js": "index.js",
+    "css": "style.css",
+    "requires": [],
+    "optional": [],
+    "homePage": "https://github.com/SillyTavern/Extension-ChatTracker"
+}

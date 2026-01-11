@@ -639,7 +639,7 @@ function openLimitEditor(event) {
     modal.innerHTML = `
         <h3>Set Custom Token Limit</h3>
         <div class="limit-editor-input-group">
-            <label for="limit-input">Token Limit (32,000 - 100,000):</label>
+            <label for="limit-input">Token Limit (0 - 128,000):</label>
             <input type="number" id="limit-input" class="limit-editor-input" value="${maxTokens}" min="0" max="128000" placeholder="50000" required>
             <span class="input-hint">Default: 50,000 tokens</span>
         </div>

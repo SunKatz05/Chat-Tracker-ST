@@ -9,3 +9,4 @@ A compact extension that allows you to track:
 - Token Count of context used up to a set limit
 
 Made by сунризе
+https://t.me/pinacoladaST

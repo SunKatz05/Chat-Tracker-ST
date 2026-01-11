@@ -1,6 +1,6 @@
 .chat-tracker-panel {
     position: fixed;
-    top: 10px;
+    top: 40px;
     left: 10px;
     bottom: auto;
     right: auto;
@@ -447,7 +447,7 @@ body.light-theme .limit-editor-cancel:hover {
 
 @media (max-width: 768px) {
     .chat-tracker-panel {
-        top: 5px;
+        top: 20px;
         left: 5px;
         width: 160px;
         padding: 4px;

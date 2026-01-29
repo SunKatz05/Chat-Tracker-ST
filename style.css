@@ -5,30 +5,34 @@
     bottom: auto;
     right: auto;
     z-index: 9999;
-    
+
     background: rgba(0, 0, 0, 0.3);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     color: var(--SmartThemeEmColor, #ffffff);
-    
+
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    
+
     width: 180px;
     padding: 6px;
-    
+
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
     will-change: transform;
     backface-visibility: hidden;
-    
+
     font-family: var(--mainFontFamily, 'Noto Sans', sans-serif);
     font-size: 12px;
     line-height: 1.2;
     overflow: hidden;
-    
+
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
 }
 
 body.light-theme .chat-tracker-panel {
@@ -36,6 +40,10 @@ body.light-theme .chat-tracker-panel {
     color: #000000;
     text-shadow: 0 1px 1px rgba(255, 255, 255, 0.8);
     border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.chat-tracker-panel:active {
+    cursor: grabbing;
 }
 
 .chat-tracker-panel.collapsed {
@@ -53,6 +61,11 @@ body.light-theme .chat-tracker-panel {
 .chat-tracker-panel.collapsed:hover {
     opacity: 1;
     transform: scale(1.05);
+}
+
+.chat-tracker-panel.dragging {
+    transition: none !important;
+    opacity: 0.9;
 }
 
 .tracker-header {
@@ -143,78 +156,79 @@ body.light-theme .tracker-toggle:hover {
 }
 
 .tracker-stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 4px;
-    padding: 4px;
-    background-color: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
-}
-
-body.light-theme .tracker-stat {
-    background-color: rgba(255, 255, 255, 0.3);
-}
-
-.tracker-stat:last-child {
-    margin-bottom: 0;
-}
-
-.stat-label {
-    display: inline;
-    font-size: 11px;
-    opacity: 0.9;
-    font-weight: 600;
+    padding: 5px 8px;
+    background-color: rgba(0, 0, 0, 0.3);
+    border-radius: 6px;
+    min-height: 22px;
 }
 
 .stat-value {
-    display: inline;
     font-size: 11px;
     font-weight: 500;
-    margin-left: 4px;
+    text-align: right;
 }
 
-.context-info {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: 100%;
-}
-
-.context-text {
-    font-size: 11px;
-}
-
-.context-percent {
+.stat-label {
     font-size: 10px;
-    opacity: 0.8;
+    font-weight: 700;
+    opacity: 0.7;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tokens-vertical-block {
+    flex-direction: column !important;
+    align-items: center !important;
+    padding: 4px 6px 2px 6px !important;
+    gap: 2px !important;
+}
+
+.tokens-label-top {
+    font-size: 10px;
+    font-weight: 700;
+    opacity: 0.7;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 1px;
+}
+
+.tokens-numbers-mid {
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+    margin-bottom: 2px;
 }
 
 .edit-limit-btn {
-    background: transparent;
-    border: none;
-    color: inherit;
+    background: transparent !important;
+    border: none !important;
+    color: inherit !important;
     cursor: pointer;
-    font-size: 14px;
-    padding: 4px 8px;
-    border-radius: 4px;
-    transition: all 0.2s ease;
-    opacity: 0.6;
-    margin-top: 4px;
-    align-self: center;
+
+    font-size: 16px;
     line-height: 1;
+
+    opacity: 0.4;
+    padding: 2px 10px !important;
+
+    transition: all 0.2s ease;
+    display: block;
+    width: auto;
 }
 
 .edit-limit-btn:hover {
     opacity: 1;
-    background-color: rgba(255, 255, 255, 0.08);
-    transform: scale(1.1);
+    transform: scale(1.2);
+
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
 }
 
-.edit-limit-btn:active {
-    transform: scale(1.0);
-    background-color: rgba(255, 255, 255, 0.12);
-}
-
-body.light-theme .edit-limit-btn:hover {
-    background-color: rgba(0, 0, 0, 0.08);
+.tracker-toggle, .edit-limit-btn {
+    cursor: pointer;
 }
 
 .limit-editor-overlay {
@@ -461,7 +475,7 @@ body.light-theme .limit-editor-cancel:hover {
     }
 
     .limit-editor-input {
-        font-size: 16px; /* Prevents zoom on iOS */
+        font-size: 16px;
     }
 
     .input-hint,

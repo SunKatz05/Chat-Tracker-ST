@@ -1,3 +1,8 @@
+let isDragging = false;
+let dragStartX, dragStartY;
+let panelStartX, panelStartY;
+let hasMoved = false;
+
 let lastHiddenMessage = null;
 let isCollapsed = false;
 let contextReady = false;
@@ -33,7 +38,7 @@ window.fetch = async (...args) => {
     if (isGenerateRequest && options?.body) {
         try {
             const body = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
-            
+
             if (body.messages && Array.isArray(body.messages)) {
                 const context = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
                 if (context && typeof context.getTokenCount === 'function') {
@@ -54,7 +59,7 @@ window.fetch = async (...args) => {
     }
 
     if (isGenerateRequest && response.ok) {
-        handleFetchResponse(response, urlString).catch(e => 
+        handleFetchResponse(response, urlString).catch(e =>
             debugLog('fetch:response async error', e.message)
         );
     }
@@ -68,7 +73,7 @@ async function handleFetchResponse(response, urlString) {
         if (!clone) return;
 
         const contentType = clone.headers?.get?.('content-type') ?? '';
-        
+
         let data;
         if (contentType.includes('application/json')) {
             data = await clone.json();
@@ -88,11 +93,11 @@ async function handleFetchResponse(response, urlString) {
         if (typeof extracted === 'number' && extracted > 0) {
             const prevTokenCount = lastInterceptedTokenCount;
             lastInterceptedTokenCount = Math.round(extracted);
-            
+
             if (lastInterceptedTokenCount !== prevTokenCount) {
-                debugLog('fetch:response extracted', { 
-                    url: urlString, 
-                    tokens: lastInterceptedTokenCount 
+                debugLog('fetch:response extracted', {
+                    url: urlString,
+                    tokens: lastInterceptedTokenCount
                 });
                 updateContextDisplay('fetch:response');
             }
@@ -122,16 +127,16 @@ function waitForSillyTavernReady() {
         initializationRetries = 0;
         const maxRetries = 100;
         const checkInterval = 100;
-        
+
         const check = () => {
             initializationRetries++;
-            
+
             if (typeof SillyTavern === 'undefined') {
                 if (initializationRetries < maxRetries) setTimeout(check, checkInterval);
                 else resolve();
                 return;
             }
-            
+
             try {
                 const context = SillyTavern.getContext();
                 if (!context) {
@@ -139,7 +144,7 @@ function waitForSillyTavernReady() {
                     else resolve();
                     return;
                 }
-                
+
                 if (context.chat === undefined || context.chat === null) {
                     if (initializationRetries < maxRetries) setTimeout(check, checkInterval);
                     else {
@@ -148,7 +153,7 @@ function waitForSillyTavernReady() {
                     }
                     return;
                 }
-                
+
                 contextReady = true;
                 resolve();
             } catch (error) {
@@ -156,19 +161,102 @@ function waitForSillyTavernReady() {
                 else resolve();
             }
         };
-        
+
         check();
     });
+}
+
+function setupDraggable(el) {
+    const onMove = (e) => {
+        if (!isDragging) return;
+
+        const clientX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
+        const clientY = e.type === 'touchmove' ? e.touches[0].clientY : e.clientY;
+
+        const dx = clientX - dragStartX;
+        const dy = clientY - dragStartY;
+
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+            hasMoved = true;
+            el.classList.add('dragging');
+        }
+
+        let newLeft = panelStartX + dx;
+        let newTop = panelStartY + dy;
+
+        newLeft = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, newLeft));
+        newTop = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, newTop));
+
+        el.style.left = `${newLeft}px`;
+        el.style.top = `${newTop}px`;
+        el.style.bottom = 'auto';
+        el.style.right = 'auto';
+    };
+
+    const onEnd = () => {
+        if (isDragging) {
+            isDragging = false;
+            el.classList.remove('dragging');
+
+            const rect = el.getBoundingClientRect();
+            const windowWidth = window.innerWidth;
+
+            if ((rect.left + rect.width / 2) > windowWidth / 2) {
+                const rightDist = windowWidth - rect.right;
+                el.style.left = 'auto';
+                el.style.right = rightDist + 'px';
+            } else {
+                el.style.right = 'auto';
+                el.style.left = rect.left + 'px';
+            }
+
+            saveState();
+            setTimeout(() => { hasMoved = false; }, 50);
+        }
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onEnd);
+        window.removeEventListener('touchmove', onMove);
+        window.removeEventListener('touchend', onEnd);
+    };
+
+    const onStart = (e) => {
+
+        if (e.target.closest('#edit-limit-btn')) return;
+
+        isDragging = true;
+        hasMoved = false;
+
+        const clientX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
+        const clientY = e.type === 'touchstart' ? e.touches[0].clientY : e.clientY;
+
+        dragStartX = clientX;
+        dragStartY = clientY;
+
+        const rect = el.getBoundingClientRect();
+        panelStartX = rect.left;
+        panelStartY = rect.top;
+
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onEnd);
+        window.addEventListener('touchmove', onMove, { passive: false });
+        window.addEventListener('touchend', onEnd);
+    };
+
+    el.addEventListener('mousedown', onStart);
+    el.addEventListener('touchstart', onStart, { passive: true });
 }
 
 function createTrackerPanel() {
     try {
         if (document.getElementById('chat-tracker-panel')) return;
-        
+
         const panel = document.createElement('div');
         panel.id = 'chat-tracker-panel';
         panel.className = 'chat-tracker-panel';
-        
+
+        const header = document.createElement('div');
+        header.className = 'tracker-header';
+
         const svgIcon = `
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -177,47 +265,77 @@ function createTrackerPanel() {
                 <circle cx="8" cy="11" r="1" fill="currentColor"/>
             </svg>
         `;
-        
-        panel.innerHTML = `
-            <div class="tracker-header">
-                <span class="tracker-icon" title="Chat Tracker">${svgIcon}</span>
-                <button class="tracker-toggle" id="tracker-toggle" title="Toggle">
-                    <span class="toggle-arrow">▼</span>
-                </button>
+
+        const icon = document.createElement('span');
+        icon.className = 'tracker-icon';
+        icon.title = 'Chat Tracker';
+        icon.innerHTML = svgIcon;
+
+        const toggleButton = document.createElement('button');
+        toggleButton.className = 'tracker-toggle';
+        toggleButton.id = 'tracker-toggle';
+        toggleButton.title = 'Toggle';
+        const arrow = document.createElement('span');
+        arrow.className = 'toggle-arrow';
+        arrow.textContent = '▼';
+        toggleButton.appendChild(arrow);
+
+        header.appendChild(icon);
+        header.appendChild(toggleButton);
+
+        const content = document.createElement('div');
+        content.className = 'tracker-content';
+        content.id = 'tracker-content';
+
+        const messagesDiv = document.createElement('div');
+        messagesDiv.className = 'tracker-stat';
+        messagesDiv.innerHTML = `
+    <span class="stat-label">Messages:</span>
+    <span class="stat-value" id="stat-messages">0</span>
+`;
+
+        const hiddenDiv = document.createElement('div');
+        hiddenDiv.className = 'tracker-stat';
+        hiddenDiv.innerHTML = `
+    <span class="stat-label">Hidden:</span>
+    <span class="stat-value" id="stat-hidden">0</span>
+`;
+
+        const contextDiv = document.createElement('div');
+
+        contextDiv.className = 'tracker-stat tokens-vertical-block';
+        contextDiv.innerHTML = `
+            <div class="tokens-label-top">Tokens:</div>
+            <div id="stat-context" class="tokens-numbers-mid">
+                <span class="context-text">0 / 0</span>
+                <span class="context-percent">(0%)</span>
             </div>
-            <div class="tracker-content" id="tracker-content">
-                <div class="tracker-stat">
-                    <span class="stat-label">Messages:</span>
-                    <span class="stat-value" id="stat-messages">0</span>
-                </div>
-                <div class="tracker-stat">
-                    <span class="stat-label">Hidden:</span>
-                    <span class="stat-value" id="stat-hidden">0</span>
-                </div>
-                <div class="tracker-stat">
-                    <div class="context-info">
-                        <span class="stat-label">Tokens:</span>
-                        <span class="stat-value" id="stat-context">
-                            <span class="context-text">0 / 0</span>
-                            <span class="context-percent">(0%)</span>
-                        </span>
-                        <button class="edit-limit-btn" id="edit-limit-btn" title="Edit token limit">✎</button>
-                    </div>
-                </div>
-            </div>
+            <button class="edit-limit-btn" id="edit-limit-btn" title="Edit token limit">✎</button>
         `;
-        
+
+        content.appendChild(messagesDiv);
+        content.appendChild(hiddenDiv);
+        content.appendChild(contextDiv);
+
+        panel.appendChild(header);
+        panel.appendChild(content);
+
         document.body.appendChild(panel);
 
-        const toggleButton = document.getElementById('tracker-toggle');
-        if (toggleButton) toggleButton.addEventListener('click', togglePanel);
+        const toggleBtn = document.getElementById('tracker-toggle');
+        if (toggleBtn) toggleBtn.addEventListener('click', togglePanel);
 
         const editLimitBtn = document.getElementById('edit-limit-btn');
         if (editLimitBtn) editLimitBtn.addEventListener('click', openLimitEditor);
+
+        setupDraggable(panel);
+
+        debugLog('Panel created and added to body');
     } catch (error) {}
 }
 
 function togglePanel(event) {
+    if (hasMoved) return;
     if (event) event.stopPropagation();
 
     const panel = document.getElementById('chat-tracker-panel');
@@ -290,7 +408,7 @@ function togglePanel(event) {
 }
 
 function handlePanelClick() {
-    if (isCollapsed) togglePanel();
+    if (isCollapsed && !hasMoved) togglePanel();
 }
 
 function setupEventListeners() {
@@ -488,7 +606,7 @@ function getTokenCountWithMethod() {
         }
 
         const visibleMessages = context.chat
-            .filter(msg => !isMessageHidden(msg)) 
+            .filter(msg => !isMessageHidden(msg))
             .map(msg => msg.mes || "")
             .join("\n");
 
@@ -748,6 +866,11 @@ function refreshAll(trigger = 'refresh') {
 function saveState() {
     try {
         localStorage.setItem('chatTracker_collapsed', isCollapsed.toString());
+        const panel = document.getElementById('chat-tracker-panel');
+        if (panel) {
+            localStorage.setItem('chatTracker_left', panel.style.left);
+            localStorage.setItem('chatTracker_top', panel.style.top);
+        }
     } catch (error) {}
 }
 
@@ -770,6 +893,14 @@ function loadState() {
                     }
                 }
             }
+        }
+
+        const panel = document.getElementById('chat-tracker-panel');
+        if (panel) {
+            const left = localStorage.getItem('chatTracker_left');
+            const top = localStorage.getItem('chatTracker_top');
+            if (left) panel.style.left = left;
+            if (top) panel.style.top = top;
         }
         loadMaxTokens();
     } catch (error) {}

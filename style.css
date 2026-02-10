@@ -705,3 +705,25 @@ body.light-theme .limit-editor-cancel:hover {
     cursor: pointer; 
     text-decoration: underline;
 }
+
+.btn-force-sum {
+    cursor: pointer;
+    color: var(--SmartThemeQuoteColor, #ffaa00);
+    font-weight: bold;
+    opacity: 0.8;
+    transition: opacity 0.2s, transform 0.2s;
+}
+
+.btn-force-sum:hover {
+    opacity: 1;
+    text-shadow: 0 0 8px rgba(255, 170, 0, 0.4);
+    transform: scale(1.05);
+}
+
+.tracker-popup-footer {
+    padding: 0 10px 10px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center; 
+    font-size: 10px;
+}

@@ -1,7 +1,7 @@
 {
     "name": "chat-tracker",
     "display_name": "Chat Tracker",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "Compact collapsible panel showing message count, last hidden message, and token usage",
     "author": "Sunrize",
     "loading_order": 20,

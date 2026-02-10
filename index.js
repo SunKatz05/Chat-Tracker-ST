@@ -902,6 +902,32 @@ function loadState() {
 function setupSummaryEvents() {
     const statEl = document.getElementById('stat-messages');
     if (!statEl) return;
+    const triggerSummarize = () => {
+        toastr.info("Requesting summary...", "Chat Tracker");
+        const forceSummarizeBtn = document.getElementById('memory_force_summarize');
+
+        if (forceSummarizeBtn) {
+            forceSummarizeBtn.click();
+            console.log("[ChatTracker] Нажата кнопка memory_force_summarize");
+        } else {
+            try {
+                if (typeof SlashCommandParser !== 'undefined' && SlashCommandParser.commands['summarize']) {
+                    SlashCommandParser.commands['summarize'].callback({}, '');
+                    console.log("[ChatTracker] Summarize запущен через команду.");
+                } else {
+                    console.error("Не найден элемент #memory_force_summarize и не удалось вызвать команду /summarize");
+                    if (typeof toastr !== 'undefined') toastr.error("Ошибка: Расширение Summarize не найдено или отключено.");
+                }
+            } catch (e) {
+                console.error(e);
+                if (typeof toastr !== 'undefined') toastr.error("Не удалось запустить Summarize.");
+            }
+        }
+        
+        setTimeout(() => {
+            updateMessageCount();
+        }, 1000);
+    };
 
     statEl.onclick = async (e) => {
         const createBtn = e.target.closest('#trigger-create-sum');
@@ -912,30 +938,7 @@ function setupSummaryEvents() {
         }
 
         if (createBtn) {
-            toastr.info("Requesting summary...", "Chat Tracker");
-            const forceSummarizeBtn = document.getElementById('memory_force_summarize');
-
-            if (forceSummarizeBtn) {
-                forceSummarizeBtn.click();
-                console.log("[ChatTracker] Нажата кнопка memory_force_summarize");
-            } else {
-                try {
-                    if (typeof SlashCommandParser !== 'undefined' && SlashCommandParser.commands['summarize']) {
-                        SlashCommandParser.commands['summarize'].callback({}, '');
-                        console.log("[ChatTracker] Summarize запущен через команду.");
-                    } else {
-                        console.error("Не найден элемент #memory_force_summarize и не удалось вызвать команду /summarize");
-                        if (typeof toastr !== 'undefined') toastr.error("Ошибка: Расширение Summarize не найдено или отключено.");
-                    }
-                } catch (e) {
-                    console.error(e);
-                    if (typeof toastr !== 'undefined') toastr.error("Не удалось запустить Summarize.");
-                }
-            }
-
-            setTimeout(() => {
-                updateMessageCount();
-            }, 1000);
+            triggerSummarize();
         }
     };
 
@@ -953,12 +956,17 @@ function setupSummaryEvents() {
             </div>
             <div class="tracker-popup-footer">
                 <span class="btn-restore-sum" id="tracker-sum-restore" title="Restore Previous Summary">Restore Previous</span>
-                <span>Auto-saves to Tavern</span>
+                <span class="btn-force-sum" id="tracker-sum-force" title="Force Update Summary"><i class="fa-solid fa-sync"></i> + Update</span>
+                <span>Auto-saves</span>
             </div>
         `;
         document.body.appendChild(popup);
 
         document.getElementById('tracker-sum-close').onclick = () => toggleSumPopup(false);
+
+        document.getElementById('tracker-sum-force').onclick = () => {
+            triggerSummarize();
+        };
 
         setupDraggable(popup, document.getElementById('tracker-sum-drag'));
 

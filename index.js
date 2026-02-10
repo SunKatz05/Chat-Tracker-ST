@@ -16,6 +16,7 @@ let tokenUiObserver = null;
 let tokenUiObserverRetries = 0;
 
 let maxTokens = 50000;
+let currentSumIdx = -1;
 
 const CHAT_TRACKER_DEBUG = true;
 
@@ -27,8 +28,6 @@ function debugLog(...args) {
 }
 
 const originalFetch = window.fetch;
-const fetchInterceptQueue = [];
-const FETCH_INTERCEPT_TIMEOUT = 2000;
 
 window.fetch = async (...args) => {
     const [url, options] = args;
@@ -82,7 +81,6 @@ async function handleFetchResponse(response, urlString) {
             try {
                 data = JSON.parse(text);
             } catch (e) {
-                debugLog('fetch:response text parse failed');
                 return;
             }
         } else {
@@ -95,10 +93,6 @@ async function handleFetchResponse(response, urlString) {
             lastInterceptedTokenCount = Math.round(extracted);
 
             if (lastInterceptedTokenCount !== prevTokenCount) {
-                debugLog('fetch:response extracted', {
-                    url: urlString,
-                    tokens: lastInterceptedTokenCount
-                });
                 updateContextDisplay('fetch:response');
             }
         }
@@ -116,6 +110,7 @@ jQuery(async function() {
         refreshAll('init');
         setupEventListeners();
         setupTokenObservers();
+        setupSummaryEvents();
         setInterval(() => {
             refreshAll('timer');
         }, 2500);
@@ -166,7 +161,9 @@ function waitForSillyTavernReady() {
     });
 }
 
-function setupDraggable(el) {
+function setupDraggable(el, handle) {
+    const dragHandle = handle || el;
+
     const onMove = (e) => {
         if (!isDragging) return;
 
@@ -210,7 +207,9 @@ function setupDraggable(el) {
                 el.style.left = rect.left + 'px';
             }
 
-            saveState();
+            if (el.id === 'chat-tracker-panel') {
+                saveState();
+            }
             setTimeout(() => { hasMoved = false; }, 50);
         }
         window.removeEventListener('mousemove', onMove);
@@ -220,8 +219,7 @@ function setupDraggable(el) {
     };
 
     const onStart = (e) => {
-
-        if (e.target.closest('#edit-limit-btn')) return;
+        if (e.target.closest('button, input, textarea, .tracker-popup-close, .edit-limit-btn')) return;
 
         isDragging = true;
         hasMoved = false;
@@ -242,8 +240,8 @@ function setupDraggable(el) {
         window.addEventListener('touchend', onEnd);
     };
 
-    el.addEventListener('mousedown', onStart);
-    el.addEventListener('touchstart', onStart, { passive: true });
+    dragHandle.addEventListener('mousedown', onStart);
+    dragHandle.addEventListener('touchstart', onStart, { passive: true });
 }
 
 function createTrackerPanel() {
@@ -257,15 +255,13 @@ function createTrackerPanel() {
         const header = document.createElement('div');
         header.className = 'tracker-header';
 
-        const svgIcon = `
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                <circle cx="12" cy="11" r="1" fill="currentColor"/>
-                <circle cx="16" cy="11" r="1" fill="currentColor"/>
-                <circle cx="8" cy="11" r="1" fill="currentColor"/>
-            </svg>
-        `;
-
+const svgIcon = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        <line x1="8" y1="9" x2="16" y2="9"/>
+        <line x1="8" y1="13" x2="14" y2="13"/>
+    </svg>
+`;
         const icon = document.createElement('span');
         icon.className = 'tracker-icon';
         icon.title = 'Chat Tracker';
@@ -329,8 +325,6 @@ function createTrackerPanel() {
         if (editLimitBtn) editLimitBtn.addEventListener('click', openLimitEditor);
 
         setupDraggable(panel);
-
-        debugLog('Panel created and added to body');
     } catch (error) {}
 }
 
@@ -423,8 +417,6 @@ function setupEventListeners() {
         const handleRefreshEvent = (eventName, opts = {}) => {
             const { delayMs = 0, resetIntercepted = false } = opts;
 
-            debugLog('event', eventName);
-
             if (resetIntercepted) {
                 lastInterceptedTokenCount = 0;
                 setupTokenObservers();
@@ -441,25 +433,32 @@ function setupEventListeners() {
         };
 
         const types = window.event_types;
-        if (types) {
-            if (types.MESSAGE_SENT) eventSource.on(types.MESSAGE_SENT, () => handleRefreshEvent(types.MESSAGE_SENT));
-            if (types.MESSAGE_RECEIVED) eventSource.on(types.MESSAGE_RECEIVED, () => handleRefreshEvent(types.MESSAGE_RECEIVED));
-            if (types.CHAT_CHANGED) eventSource.on(types.CHAT_CHANGED, () => handleRefreshEvent(types.CHAT_CHANGED, { resetIntercepted: true }));
-            if (types.GENERATION_ENDED) eventSource.on(types.GENERATION_ENDED, () => handleRefreshEvent(types.GENERATION_ENDED, { delayMs: 500 }));
-        } else {
-            eventSource.on('message_sent', () => handleRefreshEvent('message_sent'));
-            eventSource.on('message_received', () => handleRefreshEvent('message_received'));
-            eventSource.on('chat_changed', () => handleRefreshEvent('chat_changed', { resetIntercepted: true }));
-            eventSource.on('generation_ended', () => handleRefreshEvent('generation_ended', { delayMs: 500 }));
-            eventSource.on('generation_after_commands', () => handleRefreshEvent('generation_after_commands', { delayMs: 500 }));
-            eventSource.on('message_deleted', () => handleRefreshEvent('message_deleted'));
-            eventSource.on('message_edited', () => handleRefreshEvent('message_edited'));
-        }
+        const eventsToListen = types ? 
+            [types.MESSAGE_SENT, types.MESSAGE_RECEIVED, types.CHAT_CHANGED, types.GENERATION_ENDED, types.MESSAGE_UPDATED] : 
+            ['message_sent', 'message_received', 'chat_changed', 'generation_ended', 'message_updated', 'message_deleted', 'message_edited'];
+
+        eventsToListen.forEach(evt => {
+            if(!evt) return;
+            const isGenEnd = evt === (types?.GENERATION_ENDED || 'generation_ended');
+            const isChatChange = evt === (types?.CHAT_CHANGED || 'chat_changed');
+            
+            eventSource.on(evt, () => {
+                handleRefreshEvent(evt, { 
+                    delayMs: isGenEnd ? 500 : 0, 
+                    resetIntercepted: isChatChange 
+                });
+                
+                setTimeout(() => {
+                    if (document.getElementById('tracker-sum-popup')?.style.display !== 'none') {
+                        updatePopupContentFromContext();
+                    }
+                }, isGenEnd ? 200 : 50);
+            });
+        });
 
         const hiddenEvents = ['message_hidden', 'MESSAGE_HIDDEN', 'messageUpdated'];
         hiddenEvents.forEach(eventName => {
             eventSource.on(eventName, (data) => {
-                debugLog('event', eventName);
                 if (data && typeof data === 'object' && data.messageId) captureHiddenMessage(data.messageId);
                 else if (typeof data === 'number') captureHiddenMessage(data);
                 updateHiddenCount();
@@ -469,17 +468,29 @@ function setupEventListeners() {
 }
 
 function updateMessageCount() {
-    try {
-        const context = SillyTavern.getContext();
-        if (!context || !context.chat) return;
-        const chat = context.chat || [];
-        let visibleCount = 0;
-        chat.forEach((msg) => {
-            if (msg.is_system !== true && !isMessageHidden(msg)) visibleCount++;
-        });
-        const element = document.getElementById('stat-messages');
-        if (element) element.textContent = visibleCount;
-    } catch (error) {}
+    const context = SillyTavern.getContext();
+    if (!context || !context.chat) return;
+    
+    let visibleCount = 0;
+    let lastSumIdx = -1;
+    
+    context.chat.forEach((msg, idx) => {
+        if (msg.is_system !== true && !isMessageHidden(msg)) visibleCount++;
+        if (msg.extra && msg.extra.memory) lastSumIdx = idx;
+    });
+
+    currentSumIdx = lastSumIdx;
+    const element = document.getElementById('stat-messages');
+    
+    if (element) {
+        let html = `${visibleCount}`; 
+        if (lastSumIdx !== -1) {
+            html += ` <span id="trigger-show-sum" class="has-summary-clickable">(Sum: #${lastSumIdx})</span>`;
+        } else {
+            html += ` <span id="trigger-create-sum" class="tracker-btn-create" title="Create Summary">+</span>`;
+        }
+        element.innerHTML = html;
+    }
 }
 
 function isMessageHidden(msg) {
@@ -698,7 +709,6 @@ function updateContextDisplay(trigger = 'update') {
     if (!element) return;
 
     if (current !== lastDisplayedTokenCount || method !== lastDisplayedTokenMethod) {
-        debugLog('tokens', { trigger, method, tokens: current });
         lastDisplayedTokenCount = current;
         lastDisplayedTokenMethod = method;
     }
@@ -733,111 +743,75 @@ function setupTokenObservers() {
         tokenUiObserverRetries = 0;
 
         tokenUiObserver = new MutationObserver(() => {
-            debugLog('token ui updated');
             updateContextDisplay('ui-mutation');
         });
 
         tokenUiObserver.observe(target, { childList: true, subtree: true, characterData: true });
     } catch (e) {}
 }
-
 function openLimitEditor(event) {
     if (event) event.stopPropagation();
-
-    const existingEditor = document.getElementById('limit-editor-overlay');
-    if (existingEditor) existingEditor.remove();
-
-    const overlay = document.createElement('div');
-    overlay.id = 'limit-editor-overlay';
-    overlay.className = 'limit-editor-overlay';
-
-    const modal = document.createElement('div');
-    modal.className = 'limit-editor-modal';
-
-    modal.innerHTML = `
-        <h3>Set Custom Token Limit</h3>
-        <div class="limit-editor-input-group">
-            <label for="limit-input">Token Limit (0 - 128,000):</label>
-            <input type="number" id="limit-input" class="limit-editor-input" value="${maxTokens}" min="0" max="128000" placeholder="50000" required>
-            <span class="input-hint">Default: 50,000 tokens</span>
+    const existingPopup = document.getElementById('tracker-limit-popup');
+    if (existingPopup) {
+        existingPopup.remove();
+        return;
+    }
+    const popup = document.createElement('div');
+    popup.id = 'tracker-limit-popup';
+    popup.className = 'tracker-popup';
+    popup.innerHTML = `
+        <div class="tracker-popup-header" id="tracker-limit-drag">
+            <span>SET TOKEN LIMIT</span>
+            <span class="tracker-popup-close" id="tracker-limit-close">&times;</span>
         </div>
-        <div class="limit-editor-buttons">
-            <button class="limit-editor-btn limit-editor-cancel" id="limit-cancel">Cancel</button>
-            <button class="limit-editor-btn limit-editor-save" id="limit-save">Save</button>
+        <div class="tracker-popup-body" style="padding: 10px;">
+            <div style="margin-bottom: 5px; color: var(--SmartThemeBodyColor);">Limit (0-128k):</div>
+            <input type="number" id="limit-input" class="limit-editor-input" 
+                   value="${maxTokens}" min="0" max="128000" placeholder="50000" 
+                   style="width: 100%; box-sizing: border-box; margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; gap: 5px;">
+                 <button class="limit-editor-btn" id="limit-cancel" style="flex: 1;">Cancel</button>
+                 <button class="limit-editor-btn" id="limit-save" style="flex: 1;">Save</button>
+            </div>
         </div>
     `;
 
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-    overlay.classList.add('active');
-
+    document.body.appendChild(popup);
+    const panel = document.getElementById('chat-tracker-panel');
+    const rect = panel.getBoundingClientRect();
+    popup.style.top = (rect.top + 80) + 'px';
+    if (rect.left > window.innerWidth / 2) {
+        popup.style.left = (rect.left - 200) + 'px';
+    } else {
+        popup.style.left = (rect.right + 10) + 'px';
+    }
+    popup.style.display = 'flex';
+    popup.style.width = '200px';
     const input = document.getElementById('limit-input');
+    const closeBtn = document.getElementById('tracker-limit-close');
     const cancelBtn = document.getElementById('limit-cancel');
     const saveBtn = document.getElementById('limit-save');
+    const header = document.getElementById('tracker-limit-drag');
+    setupDraggable(popup, header);
 
-    function closeModal() {
-        overlay.remove();
+    function closePopup() {
+        popup.remove();
     }
 
-    function validateInput(value) {
-        const num = parseInt(value);
-        return !isNaN(num) && num >= 0 && num <= 128000;
-    }
+    closeBtn.onclick = closePopup;
+    cancelBtn.onclick = closePopup;
 
-    function showError(message) {
-        const existingError = modal.querySelector('.error-message');
-        if (existingError) existingError.remove();
-
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'error-message';
-        errorDiv.textContent = message;
-        modal.querySelector('.limit-editor-input-group').appendChild(errorDiv);
-
-        input.classList.add('input-error');
-        setTimeout(() => input.classList.remove('input-error'), 1000);
-    }
-
-    function clearError() {
-        const existingError = modal.querySelector('.error-message');
-        if (existingError) existingError.remove();
-    }
-
-    cancelBtn.addEventListener('click', () => closeModal());
-
-    saveBtn.addEventListener('click', () => {
-        const value = input.value.trim();
-
-        if (!value) {
-            showError('Please enter a value');
-            return;
+    saveBtn.onclick = () => {
+        const val = parseInt(input.value.trim());
+        if (!isNaN(val) && val >= 0 && val <= 128000) {
+            maxTokens = val;
+            localStorage.setItem('chatTrackerMaxTokens', maxTokens.toString());
+            updateContextDisplay();
+            closePopup();
+        } else {
+            toastr.error("Invalid token limit", "Chat Tracker");
         }
-
-        if (!validateInput(value)) {
-            showError('Value must be between 0 and 128,000');
-            return;
-        }
-
-        const numValue = parseInt(value);
-        maxTokens = numValue;
-        localStorage.setItem('chatTrackerMaxTokens', maxTokens.toString());
-        updateContextDisplay();
-        closeModal();
-    });
-
-    input.addEventListener('input', () => {
-        clearError();
-        input.classList.remove('input-error');
-    });
-
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') saveBtn.click();
-        if (e.key === 'Escape') closeModal();
-    });
-
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) closeModal();
-    });
-
+    };
     setTimeout(() => input.focus(), 50);
 }
 
@@ -865,25 +839,52 @@ function refreshAll(trigger = 'refresh') {
 
 function saveState() {
     try {
-        localStorage.setItem('chatTracker_collapsed', isCollapsed.toString());
         const panel = document.getElementById('chat-tracker-panel');
-        if (panel) {
-            localStorage.setItem('chatTracker_left', panel.style.left);
-            localStorage.setItem('chatTracker_top', panel.style.top);
+        if (!panel) return;
+
+        const rect = panel.getBoundingClientRect();
+        const winWidth = window.innerWidth;
+        const isRightSide = rect.left + (rect.width / 2) > winWidth / 2;
+
+        const state = {
+            collapsed: isCollapsed,
+            top: panel.style.top,
+            isRight: isRightSide
+        };
+
+        if (isRightSide) {
+            state.right = (winWidth - rect.right) + 'px';
+            state.left = 'auto';
+        } else {
+            state.left = panel.style.left;
+            state.right = 'auto';
         }
-    } catch (error) {}
+
+        localStorage.setItem('chatTracker_settings', JSON.stringify(state));
+    } catch (error) { console.error("Save error:", error); }
 }
 
 function loadState() {
     try {
-        const savedState = localStorage.getItem('chatTracker_collapsed');
-        if (savedState !== null) {
-            isCollapsed = savedState === 'true';
-            if (isCollapsed) {
-                const panel = document.getElementById('chat-tracker-panel');
+        const saved = localStorage.getItem('chatTracker_settings');
+        if (!saved) return;
+        const state = JSON.parse(saved);
+        
+        const panel = document.getElementById('chat-tracker-panel');
+        if (panel) {
+            panel.style.top = state.top || '40px';
+            if (state.isRight) {
+                panel.style.right = state.right;
+                panel.style.left = 'auto';
+            } else {
+                panel.style.left = state.left;
+                panel.style.right = 'auto';
+            }
+            if (state.collapsed) {
+                isCollapsed = true;
                 const content = document.getElementById('tracker-content');
                 const arrow = document.querySelector('.toggle-arrow');
-                if (panel && content) {
+                if (content) {
                     panel.classList.add('collapsed');
                     content.style.maxHeight = '0px';
                     content.style.opacity = '0';
@@ -894,14 +895,150 @@ function loadState() {
                 }
             }
         }
-
-        const panel = document.getElementById('chat-tracker-panel');
-        if (panel) {
-            const left = localStorage.getItem('chatTracker_left');
-            const top = localStorage.getItem('chatTracker_top');
-            if (left) panel.style.left = left;
-            if (top) panel.style.top = top;
-        }
         loadMaxTokens();
     } catch (error) {}
+}
+
+function setupSummaryEvents() {
+    const statEl = document.getElementById('stat-messages');
+    if (!statEl) return;
+
+    statEl.onclick = async (e) => {
+        const createBtn = e.target.closest('#trigger-create-sum');
+        const showBtn = e.target.closest('#trigger-show-sum');
+
+        if (showBtn) {
+            toggleSumPopup(true);
+        }
+
+        if (createBtn) {
+            toastr.info("Requesting summary...", "Chat Tracker");
+            const forceSummarizeBtn = document.getElementById('memory_force_summarize');
+
+            if (forceSummarizeBtn) {
+                forceSummarizeBtn.click();
+                console.log("[ChatTracker] Нажата кнопка memory_force_summarize");
+            } else {
+                try {
+                    if (typeof SlashCommandParser !== 'undefined' && SlashCommandParser.commands['summarize']) {
+                        SlashCommandParser.commands['summarize'].callback({}, '');
+                        console.log("[ChatTracker] Summarize запущен через команду.");
+                    } else {
+                        console.error("Не найден элемент #memory_force_summarize и не удалось вызвать команду /summarize");
+                        if (typeof toastr !== 'undefined') toastr.error("Ошибка: Расширение Summarize не найдено или отключено.");
+                    }
+                } catch (e) {
+                    console.error(e);
+                    if (typeof toastr !== 'undefined') toastr.error("Не удалось запустить Summarize.");
+                }
+            }
+
+            setTimeout(() => {
+                updateMessageCount();
+            }, 1000);
+        }
+    };
+
+    if (!document.getElementById('tracker-sum-popup')) {
+        const popup = document.createElement('div');
+        popup.id = 'tracker-sum-popup';
+        popup.className = 'tracker-popup';
+        popup.innerHTML = `
+            <div class="tracker-popup-header" id="tracker-sum-drag">
+                <span>CHAT SUMMARY</span>
+                <span class="tracker-popup-close" id="tracker-sum-close">&times;</span>
+            </div>
+            <div class="tracker-popup-body">
+                <textarea id="tracker-sum-area" placeholder="Summary will appear here..."></textarea>
+            </div>
+            <div class="tracker-popup-footer">
+                <span class="btn-restore-sum" id="tracker-sum-restore" title="Restore Previous Summary">Restore Previous</span>
+                <span>Auto-saves to Tavern</span>
+            </div>
+        `;
+        document.body.appendChild(popup);
+
+        document.getElementById('tracker-sum-close').onclick = () => toggleSumPopup(false);
+
+        setupDraggable(popup, document.getElementById('tracker-sum-drag'));
+
+        const area = document.getElementById('tracker-sum-area');
+        
+        area.oninput = () => {
+            const context = SillyTavern.getContext();
+            updateMessageCount();
+            
+            if (currentSumIdx !== -1 && context.chat[currentSumIdx]) {
+                const newValue = area.value;
+                context.chat[currentSumIdx].extra.memory = newValue;
+                
+                const originalTextarea = document.getElementById('memory_contents');
+                if (originalTextarea) {
+                    originalTextarea.value = newValue;
+                    originalTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+
+                context.saveChat();
+            }
+        };
+
+        document.getElementById('tracker-sum-restore').onclick = () => {
+            const originalRestoreBtn = document.getElementById('memory_restore');
+            
+            if (originalRestoreBtn) {
+                originalRestoreBtn.click();
+                toastr.info("Triggered extension restore", "Chat Tracker");
+                setTimeout(() => {
+                    updatePopupContentFromContext();
+                }, 200);
+            } else {
+                updatePopupContentFromContext();
+                toastr.warning("Original extension button not found. Reverted UI.", "Chat Tracker");
+            }
+        };
+    }
+}
+
+function updatePopupContentFromContext() {
+    const context = SillyTavern.getContext();
+    const area = document.getElementById('tracker-sum-area');
+    
+    let lastSumIdx = -1;
+    if(context && context.chat) {
+        context.chat.forEach((msg, idx) => {
+            if (msg.extra && msg.extra.memory) lastSumIdx = idx;
+        });
+    }
+    currentSumIdx = lastSumIdx;
+
+    if (area && currentSumIdx !== -1 && context.chat[currentSumIdx]) {
+        const memoryText = context.chat[currentSumIdx].extra.memory || "";
+        if (area.value !== memoryText && document.activeElement !== area) {
+            area.value = memoryText;
+        }
+    }
+}
+
+function toggleSumPopup(show) {
+    const popup = document.getElementById('tracker-sum-popup');
+    if (!popup) return;
+
+    if (show) {
+        updatePopupContentFromContext();
+
+        if (!popup.style.left && !popup.style.top) {
+            const panel = document.getElementById('chat-tracker-panel');
+            const rect = panel.getBoundingClientRect();
+            popup.style.top = (rect.top + 50) + 'px'; 
+
+            if (rect.left > window.innerWidth / 2) {
+                popup.style.left = (rect.left - 310) + 'px'; 
+            } else {
+                popup.style.left = (rect.right + 10) + 'px';
+            }
+        }
+        popup.style.display = 'flex';
+    } else {
+        popup.style.display = 'none';
+    }
 }

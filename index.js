@@ -861,7 +861,7 @@ function setupSunnyEvents() {
     statEl.onclick = (e) => {
         const triggerBtn = e.target.closest('#trigger-sunny-panel');
         if (triggerBtn) {
-            if (typeof extension_settings === 'undefined' || !extension_settings['SunnyMemories']) {
+            if (!window.extension_settings?.SunnyMemories) {
                 toastr.warning("Please install/enable SunnyMemories extension.", "Sunny QuickPanel");
                 return;
             }
@@ -950,10 +950,18 @@ function createSunnyPopup() {
 
     $('#tracker-sunny-close').on('click', () => toggleSunnyPopup(false));
 
-    $('#mini-sum-area').on('input blur', function() {
-        const smInput = $('#sunny-memories-output-summary');
-        if (smInput.length) smInput.val($(this).val()).trigger('input').trigger('blur');
-    });
+    let miniTypingTimer;
+$('#mini-sum-area, #mini-facts-area').on('input', function() {
+    const isSum = $(this).attr('id') === 'mini-sum-area';
+    const target = isSum ? $('#sunny-memories-output-summary') : $('#sunny-memories-output-facts');
+    
+    if (target.length) target.val($(this).val()); 
+    
+    clearTimeout(miniTypingTimer);
+    miniTypingTimer = setTimeout(() => {
+        if (target.length) target.trigger('blur'); 
+    }, 1000);
+});
 
     $('#mini-facts-area').on('input blur', function() {
         const smInput = $('#sunny-memories-output-facts');

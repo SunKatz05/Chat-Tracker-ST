@@ -1,6 +1,6 @@
 # Chat Tracker - SillyTavern Extension
 
-![Version](https://img.shields.io/badge/version-1.0.1-blue)
+![Version](https://img.shields.io/badge/version-1.0.2-blue)
 ![SillyTavern](https://img.shields.io/badge/SillyTavern-Extension-purple)
 
 A compact extension that allows you to track:
@@ -10,9 +10,12 @@ A compact extension that allows you to track:
 - Create and edit summaries through the extension
 ___
 # 1.0.1 Update
-- Added a function (trigger) for creating a classic built-in summary via the extension ('+'), as well as the ability to edit the chat summary in the output window
+~~- Added a function (trigger) for creating a classic built-in summary via the extension ('+'), as well as the ability to edit the chat summary in the output window~~
 - Display of the last message captured when creating a summary
-
+___
+# 1.0.2 Update
+- Integration with my new extension https://github.com/SunKatz05/SunnyMemories
+- The quick access window has been updated, allowing to manage modes: summary, facts, quests & events
 ___
 Made by сунризе
 https://t.me/pinacoladaST

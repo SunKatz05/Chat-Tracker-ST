@@ -1012,6 +1012,7 @@ $('#mini-open-main').on('click', () => {
             console.log('[ChatTracker] SunnyMemories settings are not rendered yet, scroll canceled.');
         }
     });
+}
 
 function updateSunnyPopupData() {
     const context = SillyTavern.getContext();

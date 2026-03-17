@@ -467,7 +467,7 @@ function setupEventListeners() {
 function updateMessageCount() {
     const context = SillyTavern.getContext();
     if (!context || !context.chat) return;
-
+    
     let visibleCount = 0;
     context.chat.forEach((msg) => {
         if (msg.is_system !== true && !isMessageHidden(msg)) visibleCount++;
@@ -475,10 +475,10 @@ function updateMessageCount() {
 
     if (visibleCount === lastVisibleMessageCount) return;
 
-    lastVisibleMessageCount = visibleCount;
     const element = document.getElementById('stat-messages');
-
+    
     if (element) {
+        lastVisibleMessageCount = visibleCount; 
         element.innerHTML = `${visibleCount} <span id="trigger-sunny-panel" class="tracker-btn-create" title="Open SunnyMemories Quick Panel"><i class="fa-solid fa-sun"></i></span>`;
     }
 }

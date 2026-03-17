@@ -18,7 +18,7 @@ let lastVisibleMessageCount = -1;
 
 let maxTokens = 50000;
 
-const CHAT_TRACKER_DEBUG = true;
+const CHAT_TRACKER_DEBUG = false;
 
 function debugLog(...args) {
     try {
@@ -594,16 +594,13 @@ function getTokenCountWithMethod() {
 function extractTokenCountFromObject(input) {
     try {
         const keyRank = new Map([
-            ['prompt_total_tokens', 0],['prompt_tokens', 1],
-            ['prompt_token_count', 1],['prompttokencount', 1],
-            ['token_count', 2],
+            ['prompt_total_tokens', 0],['prompt_tokens', 1],['prompt_token_count', 1],['prompttokencount', 1],['token_count', 2],
             ['tokencount', 2],
-            ['total_tokens', 3],
-            ['totaltokens', 3],
+            ['total_tokens', 3],['totaltokens', 3],
         ]);
 
         const visited = new Set();
-        const stack = [input];
+        const stack =[input];
         const candidates =[];
 
         while (stack.length > 0) {
@@ -853,7 +850,6 @@ function loadState() {
     } catch (error) {}
 }
 
-
 function setupSunnyEvents() {
     const statEl = document.getElementById('stat-messages');
     if (!statEl) return;
@@ -893,7 +889,6 @@ function createSunnyPopup() {
         </div>
         <div class="tracker-popup-body sunny-popup-body">
             
-            <!-- Вкладка Summary -->
             <div class="sunny-tab-content active" id="sunny-tab-sum">
                 <textarea id="mini-sum-area" placeholder="Story Summary..."></textarea>
                 <div class="sunny-actions">
@@ -903,7 +898,6 @@ function createSunnyPopup() {
                 </div>
             </div>
 
-            <!-- Вкладка Facts -->
             <div class="sunny-tab-content" id="sunny-tab-facts">
                 <textarea id="mini-facts-area" placeholder="Established Facts..."></textarea>
                 <div class="sunny-actions">
@@ -914,10 +908,10 @@ function createSunnyPopup() {
                 </div>
             </div>
 
-            <!-- Вкладка Quests & Calendar -->
             <div class="sunny-tab-content" id="sunny-tab-qc">
-                <div style="font-size: 11px; text-align:center; margin-bottom: 10px; color: rgba(255,255,255,0.6);">
-                    Active status is managed in the main UI.<br>Use buttons below to quickly extract from chat.
+                <div id="mini-qc-display" style="font-size: 11px; padding: 5px; background: rgba(0,0,0,0.3); border-radius: 4px; margin-bottom: 5px; color: #ccc;">
+                    <strong>Last Quest:</strong> <span id="mini-last-quest">None</span><br>
+                    <strong>Last Event:</strong> <span id="mini-last-event">None</span>
                 </div>
                 <div class="sunny-actions" style="flex-direction: column; gap: 8px;">
                     <button class="sunny-action-btn sunny-gen-btn" id="mini-quest-gen" style="width:100%;"><i class="fa-solid fa-scroll"></i> Extract Quests</button>
@@ -925,7 +919,6 @@ function createSunnyPopup() {
                 </div>
             </div>
 
-            <!-- Вкладка Library -->
             <div class="sunny-tab-content" id="sunny-tab-lib">
                 <div style="font-size: 11px; text-align:center; padding: 15px 0; color: rgba(255,255,255,0.6);">
                     Fragment management requires full interface.
@@ -947,21 +940,20 @@ function createSunnyPopup() {
         updateSunnyPopupData(); 
     });
 
-
     $('#tracker-sunny-close').on('click', () => toggleSunnyPopup(false));
 
     let miniTypingTimer;
-$('#mini-sum-area, #mini-facts-area').on('input', function() {
-    const isSum = $(this).attr('id') === 'mini-sum-area';
-    const target = isSum ? $('#sunny-memories-output-summary') : $('#sunny-memories-output-facts');
-    
-    if (target.length) target.val($(this).val()); 
-    
-    clearTimeout(miniTypingTimer);
-    miniTypingTimer = setTimeout(() => {
-        if (target.length) target.trigger('blur'); 
-    }, 1000);
-});
+    $('#mini-sum-area, #mini-facts-area').on('input', function() {
+        const isSum = $(this).attr('id') === 'mini-sum-area';
+        const target = isSum ? $('#sunny-memories-output-summary') : $('#sunny-memories-output-facts');
+        
+        if (target.length) target.val($(this).val()); 
+        
+        clearTimeout(miniTypingTimer);
+        miniTypingTimer = setTimeout(() => {
+            if (target.length) target.trigger('blur'); 
+        }, 1000);
+    });
 
     $('#mini-facts-area').on('input blur', function() {
         const smInput = $('#sunny-memories-output-facts');
@@ -996,7 +988,7 @@ $('#mini-sum-area, #mini-facts-area').on('input', function() {
         }
     };
 
-$('#mini-open-main').on('click', () => {
+    $('#mini-open-main').on('click', () => {
         toggleSunnyPopup(false);
         
         $('#sm-main-btn-memories').click(); 
@@ -1029,6 +1021,26 @@ function updateSunnyPopupData() {
     }
     if (factsArea && document.activeElement !== factsArea) {
         factsArea.value = sm.facts || "";
+    }
+
+    const questEl = document.getElementById('mini-last-quest');
+    const eventEl = document.getElementById('mini-last-event');
+    if (questEl && eventEl) {
+        let lastQuest = "None";
+        if (sm.quests && sm.quests.length > 0) {
+            const activeQuests = sm.quests.filter(q => q.status === 'current');
+            if (activeQuests.length > 0) {
+                lastQuest = activeQuests[activeQuests.length - 1].title;
+            } else {
+                lastQuest = sm.quests[sm.quests.length - 1].title;
+            }
+        }
+        let lastEvent = "None";
+        if (sm.calendar && sm.calendar.events && sm.calendar.events.length > 0) {
+            lastEvent = sm.calendar.events[sm.calendar.events.length - 1].description;
+        }
+        questEl.textContent = lastQuest.length > 40 ? lastQuest.substring(0, 40) + '...' : lastQuest;
+        eventEl.textContent = lastEvent.length > 40 ? lastEvent.substring(0, 40) + '...' : lastEvent;
     }
 }
 

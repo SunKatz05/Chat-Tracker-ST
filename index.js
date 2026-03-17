@@ -14,6 +14,7 @@ let lastDisplayedTokenMethod = '';
 
 let tokenUiObserver = null;
 let tokenUiObserverRetries = 0;
+let lastVisibleMessageCount = -1;
 
 let maxTokens = 50000;
 

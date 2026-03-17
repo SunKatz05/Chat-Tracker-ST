@@ -16,7 +16,6 @@ let tokenUiObserver = null;
 let tokenUiObserverRetries = 0;
 
 let maxTokens = 50000;
-let currentSumIdx = -1;
 
 const CHAT_TRACKER_DEBUG = true;
 
@@ -110,7 +109,7 @@ jQuery(async function() {
         refreshAll('init');
         setupEventListeners();
         setupTokenObservers();
-        setupSummaryEvents();
+        setupSunnyEvents(); 
         setInterval(() => {
             refreshAll('timer');
         }, 2500);
@@ -219,7 +218,7 @@ function setupDraggable(el, handle) {
     };
 
     const onStart = (e) => {
-        if (e.target.closest('button, input, textarea, .tracker-popup-close, .edit-limit-btn')) return;
+        if (e.target.closest('button, input, textarea, .tracker-popup-close, .edit-limit-btn, .sunny-tab-btn')) return;
 
         isDragging = true;
         hasMoved = false;
@@ -255,13 +254,13 @@ function createTrackerPanel() {
         const header = document.createElement('div');
         header.className = 'tracker-header';
 
-const svgIcon = `
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-        <line x1="8" y1="9" x2="16" y2="9"/>
-        <line x1="8" y1="13" x2="14" y2="13"/>
-    </svg>
-`;
+        const svgIcon = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                <line x1="8" y1="9" x2="16" y2="9"/>
+                <line x1="8" y1="13" x2="14" y2="13"/>
+            </svg>
+        `;
         const icon = document.createElement('span');
         icon.className = 'tracker-icon';
         icon.title = 'Chat Tracker';
@@ -286,16 +285,16 @@ const svgIcon = `
         const messagesDiv = document.createElement('div');
         messagesDiv.className = 'tracker-stat';
         messagesDiv.innerHTML = `
-    <span class="stat-label">Messages:</span>
-    <span class="stat-value" id="stat-messages">0</span>
-`;
+            <span class="stat-label">Messages:</span>
+            <span class="stat-value" id="stat-messages">0</span>
+        `;
 
         const hiddenDiv = document.createElement('div');
         hiddenDiv.className = 'tracker-stat';
         hiddenDiv.innerHTML = `
-    <span class="stat-label">Hidden:</span>
-    <span class="stat-value" id="stat-hidden">0</span>
-`;
+            <span class="stat-label">Hidden:</span>
+            <span class="stat-value" id="stat-hidden">0</span>
+        `;
 
         const contextDiv = document.createElement('div');
 
@@ -433,9 +432,7 @@ function setupEventListeners() {
         };
 
         const types = window.event_types;
-        const eventsToListen = types ? 
-            [types.MESSAGE_SENT, types.MESSAGE_RECEIVED, types.CHAT_CHANGED, types.GENERATION_ENDED, types.MESSAGE_UPDATED] : 
-            ['message_sent', 'message_received', 'chat_changed', 'generation_ended', 'message_updated', 'message_deleted', 'message_edited'];
+        const eventsToListen = types ?[types.MESSAGE_SENT, types.MESSAGE_RECEIVED, types.CHAT_CHANGED, types.GENERATION_ENDED, types.MESSAGE_UPDATED] :['message_sent', 'message_received', 'chat_changed', 'generation_ended', 'message_updated', 'message_deleted', 'message_edited'];
 
         eventsToListen.forEach(evt => {
             if(!evt) return;
@@ -449,14 +446,14 @@ function setupEventListeners() {
                 });
                 
                 setTimeout(() => {
-                    if (document.getElementById('tracker-sum-popup')?.style.display !== 'none') {
-                        updatePopupContentFromContext();
+                    if (document.getElementById('tracker-sunny-popup')?.style.display !== 'none') {
+                        updateSunnyPopupData();
                     }
                 }, isGenEnd ? 200 : 50);
             });
         });
 
-        const hiddenEvents = ['message_hidden', 'MESSAGE_HIDDEN', 'messageUpdated'];
+        const hiddenEvents =['message_hidden', 'MESSAGE_HIDDEN', 'messageUpdated'];
         hiddenEvents.forEach(eventName => {
             eventSource.on(eventName, (data) => {
                 if (data && typeof data === 'object' && data.messageId) captureHiddenMessage(data.messageId);
@@ -470,26 +467,19 @@ function setupEventListeners() {
 function updateMessageCount() {
     const context = SillyTavern.getContext();
     if (!context || !context.chat) return;
-    
+
     let visibleCount = 0;
-    let lastSumIdx = -1;
-    
-    context.chat.forEach((msg, idx) => {
+    context.chat.forEach((msg) => {
         if (msg.is_system !== true && !isMessageHidden(msg)) visibleCount++;
-        if (msg.extra && msg.extra.memory) lastSumIdx = idx;
     });
 
-    currentSumIdx = lastSumIdx;
+    if (visibleCount === lastVisibleMessageCount) return;
+
+    lastVisibleMessageCount = visibleCount;
     const element = document.getElementById('stat-messages');
-    
+
     if (element) {
-        let html = `${visibleCount}`; 
-        if (lastSumIdx !== -1) {
-            html += ` <span id="trigger-show-sum" class="has-summary-clickable">(Sum: #${lastSumIdx})</span>`;
-        } else {
-            html += ` <span id="trigger-create-sum" class="tracker-btn-create" title="Create Summary">+</span>`;
-        }
-        element.innerHTML = html;
+        element.innerHTML = `${visibleCount} <span id="trigger-sunny-panel" class="tracker-btn-create" title="Open SunnyMemories Quick Panel"><i class="fa-solid fa-sun"></i></span>`;
     }
 }
 
@@ -502,7 +492,7 @@ function countHiddenMessages() {
     try {
         const context = SillyTavern.getContext();
         if (!context || !context.chat) return { hiddenCount: 0, lastHiddenIndex: -1, lastHiddenText: '' };
-        const chat = context.chat || [];
+        const chat = context.chat ||[];
         let hiddenCount = 0;
         let lastHiddenIndex = -1;
         let lastHiddenText = '';
@@ -523,7 +513,7 @@ function captureHiddenMessage(messageId) {
     try {
         const context = SillyTavern.getContext();
         if (!context || !context.chat) return;
-        const chat = context.chat || [];
+        const chat = context.chat ||[];
         let message = chat[messageId];
         if (!message || (message.id !== undefined && message.id !== messageId)) {
             message = chat.find(msg => msg.id === messageId);
@@ -572,43 +562,6 @@ function parseTokenCountFromText(text) {
     }
 }
 
-function readTokenCountFromWindow() {
-    try {
-        const raw = window.token_count;
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.round(raw);
-        if (typeof raw === 'string') return parseTokenCountFromText(raw);
-    } catch (e) {}
-    return null;
-}
-
-function readTokenCountFromPromptTotalTokensElement() {
-    try {
-        const nodes = document.querySelectorAll('.prompt_total_tokens');
-        for (const node of nodes) {
-            const tokens = parseTokenCountFromText(node?.textContent);
-            if (typeof tokens === 'number') return tokens;
-        }
-    } catch (e) {}
-    return null;
-}
-
-function readTokenCountFromContextGetTokenCount() {
-    try {
-        const context = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
-        if (!context || typeof context.getTokenCount !== 'function') return null;
-
-        const result = context.getTokenCount();
-        if (typeof result === 'number' && Number.isFinite(result)) return Math.round(result);
-        if (typeof result === 'string') return parseTokenCountFromText(result);
-    } catch (e) {}
-    return null;
-}
-
-function readTokenCountFromFetchIntercept() {
-    if (typeof lastInterceptedTokenCount === 'number' && Number.isFinite(lastInterceptedTokenCount)) return Math.round(lastInterceptedTokenCount);
-    return null;
-}
-
 function getTokenCountWithMethod() {
     try {
         const context = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
@@ -640,10 +593,8 @@ function getTokenCountWithMethod() {
 function extractTokenCountFromObject(input) {
     try {
         const keyRank = new Map([
-            ['prompt_total_tokens', 0],
-            ['prompt_tokens', 1],
-            ['prompt_token_count', 1],
-            ['prompttokencount', 1],
+            ['prompt_total_tokens', 0],['prompt_tokens', 1],
+            ['prompt_token_count', 1],['prompttokencount', 1],
             ['token_count', 2],
             ['tokencount', 2],
             ['total_tokens', 3],
@@ -652,7 +603,7 @@ function extractTokenCountFromObject(input) {
 
         const visited = new Set();
         const stack = [input];
-        const candidates = [];
+        const candidates =[];
 
         while (stack.length > 0) {
             const value = stack.pop();
@@ -711,19 +662,19 @@ function updateContextDisplay(trigger = 'update') {
     if (current !== lastDisplayedTokenCount || method !== lastDisplayedTokenMethod) {
         lastDisplayedTokenCount = current;
         lastDisplayedTokenMethod = method;
-    }
+        
+        const textDiv = element.querySelector('.context-text');
+        const percentDiv = element.querySelector('.context-percent');
 
-    const textDiv = element.querySelector('.context-text');
-    const percentDiv = element.querySelector('.context-percent');
+        if (textDiv) textDiv.textContent = `${current.toLocaleString()} / ${maxTokens.toLocaleString()}`;
 
-    if (textDiv) textDiv.textContent = `${current.toLocaleString()} / ${maxTokens.toLocaleString()}`;
-
-    if (percentDiv) {
-        percentDiv.textContent = `(${percentage}%)`;
-        percentDiv.style.color = '';
-        if (percentage >= 90) percentDiv.style.color = '#ff4444';
-        else if (percentage >= 75) percentDiv.style.color = '#ffaa44';
-        else if (percentage >= 50) percentDiv.style.color = '#ffcc44';
+        if (percentDiv) {
+            percentDiv.textContent = `(${percentage}%)`;
+            percentDiv.style.color = '';
+            if (percentage >= 90) percentDiv.style.color = '#ff4444';
+            else if (percentage >= 75) percentDiv.style.color = '#ffaa44';
+            else if (percentage >= 50) percentDiv.style.color = '#ffcc44';
+        }
     }
 }
 
@@ -749,6 +700,7 @@ function setupTokenObservers() {
         tokenUiObserver.observe(target, { childList: true, subtree: true, characterData: true });
     } catch (e) {}
 }
+
 function openLimitEditor(event) {
     if (event) event.stopPropagation();
     const existingPopup = document.getElementById('tracker-limit-popup');
@@ -770,8 +722,8 @@ function openLimitEditor(event) {
                    value="${maxTokens}" min="0" max="128000" placeholder="50000" 
                    style="width: 100%; box-sizing: border-box; margin-bottom: 10px;">
             <div style="display: flex; justify-content: space-between; gap: 5px;">
-                 <button class="limit-editor-btn" id="limit-cancel" style="flex: 1;">Cancel</button>
-                 <button class="limit-editor-btn" id="limit-save" style="flex: 1;">Save</button>
+                 <button class="limit-editor-btn limit-editor-cancel" id="limit-cancel" style="flex: 1;">Cancel</button>
+                 <button class="limit-editor-btn limit-editor-save" id="limit-save" style="flex: 1;">Save</button>
             </div>
         </div>
     `;
@@ -787,6 +739,7 @@ function openLimitEditor(event) {
     }
     popup.style.display = 'flex';
     popup.style.width = '200px';
+    
     const input = document.getElementById('limit-input');
     const closeBtn = document.getElementById('tracker-limit-close');
     const cancelBtn = document.getElementById('limit-cancel');
@@ -899,140 +852,177 @@ function loadState() {
     } catch (error) {}
 }
 
-function setupSummaryEvents() {
+
+function setupSunnyEvents() {
     const statEl = document.getElementById('stat-messages');
     if (!statEl) return;
-    const triggerSummarize = () => {
-        toastr.info("Requesting summary...", "Chat Tracker");
-        const forceSummarizeBtn = document.getElementById('memory_force_summarize');
 
-        if (forceSummarizeBtn) {
-            forceSummarizeBtn.click();
-            console.log("[ChatTracker] Нажата кнопка memory_force_summarize");
-        } else {
-            try {
-                if (typeof SlashCommandParser !== 'undefined' && SlashCommandParser.commands['summarize']) {
-                    SlashCommandParser.commands['summarize'].callback({}, '');
-                    console.log("[ChatTracker] Summarize запущен через команду.");
-                } else {
-                    console.error("Не найден элемент #memory_force_summarize и не удалось вызвать команду /summarize");
-                    if (typeof toastr !== 'undefined') toastr.error("Ошибка: Расширение Summarize не найдено или отключено.");
-                }
-            } catch (e) {
-                console.error(e);
-                if (typeof toastr !== 'undefined') toastr.error("Не удалось запустить Summarize.");
+    statEl.onclick = (e) => {
+        const triggerBtn = e.target.closest('#trigger-sunny-panel');
+        if (triggerBtn) {
+            if (typeof extension_settings === 'undefined' || !extension_settings['SunnyMemories']) {
+                toastr.warning("Please install/enable SunnyMemories extension.", "Sunny QuickPanel");
+                return;
             }
-        }
-        
-        setTimeout(() => {
-            updateMessageCount();
-        }, 1000);
-    };
-
-    statEl.onclick = async (e) => {
-        const createBtn = e.target.closest('#trigger-create-sum');
-        const showBtn = e.target.closest('#trigger-show-sum');
-
-        if (showBtn) {
-            toggleSumPopup(true);
-        }
-
-        if (createBtn) {
-            triggerSummarize();
+            toggleSunnyPopup(true);
         }
     };
 
-    if (!document.getElementById('tracker-sum-popup')) {
-        const popup = document.createElement('div');
-        popup.id = 'tracker-sum-popup';
-        popup.className = 'tracker-popup';
-        popup.innerHTML = `
-            <div class="tracker-popup-header" id="tracker-sum-drag">
-                <span>CHAT SUMMARY</span>
-                <span class="tracker-popup-close" id="tracker-sum-close">&times;</span>
-            </div>
-            <div class="tracker-popup-body">
-                <textarea id="tracker-sum-area" placeholder="Summary will appear here..."></textarea>
-            </div>
-            <div class="tracker-popup-footer">
-                <span class="btn-restore-sum" id="tracker-sum-restore" title="Restore Previous Summary">Restore Previous</span>
-                <span class="btn-force-sum" id="tracker-sum-force" title="Force Update Summary"><i class="fa-solid fa-sync"></i> + Update</span>
-                <span>Auto-saves</span>
-            </div>
-        `;
-        document.body.appendChild(popup);
-
-        document.getElementById('tracker-sum-close').onclick = () => toggleSumPopup(false);
-
-        document.getElementById('tracker-sum-force').onclick = () => {
-            triggerSummarize();
-        };
-
-        setupDraggable(popup, document.getElementById('tracker-sum-drag'));
-
-        const area = document.getElementById('tracker-sum-area');
-        
-        area.oninput = () => {
-            const context = SillyTavern.getContext();
-            updateMessageCount();
-            
-            if (currentSumIdx !== -1 && context.chat[currentSumIdx]) {
-                const newValue = area.value;
-                context.chat[currentSumIdx].extra.memory = newValue;
-                
-                const originalTextarea = document.getElementById('memory_contents');
-                if (originalTextarea) {
-                    originalTextarea.value = newValue;
-                    originalTextarea.dispatchEvent(new Event('input', { bubbles: true }));
-                }
-
-                context.saveChat();
-            }
-        };
-
-        document.getElementById('tracker-sum-restore').onclick = () => {
-            const originalRestoreBtn = document.getElementById('memory_restore');
-            
-            if (originalRestoreBtn) {
-                originalRestoreBtn.click();
-                toastr.info("Triggered extension restore", "Chat Tracker");
-                setTimeout(() => {
-                    updatePopupContentFromContext();
-                }, 200);
-            } else {
-                updatePopupContentFromContext();
-                toastr.warning("Original extension button not found. Reverted UI.", "Chat Tracker");
-            }
-        };
-    }
+    createSunnyPopup();
 }
 
-function updatePopupContentFromContext() {
-    const context = SillyTavern.getContext();
-    const area = document.getElementById('tracker-sum-area');
+function createSunnyPopup() {
+    if (document.getElementById('tracker-sunny-popup')) return;
+
+    const popup = document.createElement('div');
+    popup.id = 'tracker-sunny-popup';
+    popup.className = 'tracker-popup';
+    popup.style.width = '350px'; 
     
-    let lastSumIdx = -1;
-    if(context && context.chat) {
-        context.chat.forEach((msg, idx) => {
-            if (msg.extra && msg.extra.memory) lastSumIdx = idx;
-        });
-    }
-    currentSumIdx = lastSumIdx;
+    popup.innerHTML = `
+        <div class="tracker-popup-header" id="tracker-sunny-drag">
+            <span><i class="fa-solid fa-sun"></i> SUNNY MEMORIES QUICK</span>
+            <span class="tracker-popup-close" id="tracker-sunny-close">&times;</span>
+        </div>
+        <div class="sunny-tabs">
+            <div class="sunny-tab-btn active" data-tab="sum">Summary</div>
+            <div class="sunny-tab-btn" data-tab="facts">Facts</div>
+            <div class="sunny-tab-btn" data-tab="qc">Q & C</div>
+            <div class="sunny-tab-btn" data-tab="lib">Library</div>
+        </div>
+        <div class="tracker-popup-body sunny-popup-body">
+            
+            <!-- Вкладка Summary -->
+            <div class="sunny-tab-content active" id="sunny-tab-sum">
+                <textarea id="mini-sum-area" placeholder="Story Summary..."></textarea>
+                <div class="sunny-actions">
+                    <button class="sunny-action-btn sunny-gen-btn" id="mini-sum-gen"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate</button>
+                    <button class="sunny-action-btn" id="mini-sum-restore"><i class="fa-solid fa-rotate-left"></i> Restore</button>
+                    <button class="sunny-action-btn" id="mini-sum-lib"><i class="fa-solid fa-book"></i> To Lib</button>
+                </div>
+            </div>
 
-    if (area && currentSumIdx !== -1 && context.chat[currentSumIdx]) {
-        const memoryText = context.chat[currentSumIdx].extra.memory || "";
-        if (area.value !== memoryText && document.activeElement !== area) {
-            area.value = memoryText;
+            <!-- Вкладка Facts -->
+            <div class="sunny-tab-content" id="sunny-tab-facts">
+                <textarea id="mini-facts-area" placeholder="Established Facts..."></textarea>
+                <div class="sunny-actions">
+                    <button class="sunny-action-btn sunny-gen-btn" id="mini-facts-gen"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate</button>
+                    <button class="sunny-action-btn" id="mini-facts-restore"><i class="fa-solid fa-rotate-left"></i></button>
+                    <button class="sunny-action-btn" id="mini-facts-split"><i class="fa-solid fa-object-ungroup"></i> Split</button>
+                    <button class="sunny-action-btn" id="mini-facts-lib"><i class="fa-solid fa-book"></i> To Lib</button>
+                </div>
+            </div>
+
+            <!-- Вкладка Quests & Calendar -->
+            <div class="sunny-tab-content" id="sunny-tab-qc">
+                <div style="font-size: 11px; text-align:center; margin-bottom: 10px; color: rgba(255,255,255,0.6);">
+                    Active status is managed in the main UI.<br>Use buttons below to quickly extract from chat.
+                </div>
+                <div class="sunny-actions" style="flex-direction: column; gap: 8px;">
+                    <button class="sunny-action-btn sunny-gen-btn" id="mini-quest-gen" style="width:100%;"><i class="fa-solid fa-scroll"></i> Extract Quests</button>
+                    <button class="sunny-action-btn sunny-gen-btn" id="mini-event-gen" style="width:100%;"><i class="fa-solid fa-calendar-day"></i> Extract Events</button>
+                </div>
+            </div>
+
+            <!-- Вкладка Library -->
+            <div class="sunny-tab-content" id="sunny-tab-lib">
+                <div style="font-size: 11px; text-align:center; padding: 15px 0; color: rgba(255,255,255,0.6);">
+                    Fragment management requires full interface.
+                </div>
+                <button class="sunny-action-btn" id="mini-open-main" style="width:100%; padding: 10px;"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open Full SunnyMemories</button>
+            </div>
+
+        </div>
+    `;
+    
+    document.body.appendChild(popup);
+    setupDraggable(popup, document.getElementById('tracker-sunny-drag'));
+
+    $('.sunny-tab-btn').on('click', function() {
+        $('.sunny-tab-btn').removeClass('active');
+        $('.sunny-tab-content').removeClass('active');
+        $(this).addClass('active');
+        $('#sunny-tab-' + $(this).data('tab')).addClass('active');
+        updateSunnyPopupData(); 
+    });
+
+
+    $('#tracker-sunny-close').on('click', () => toggleSunnyPopup(false));
+
+    $('#mini-sum-area').on('input blur', function() {
+        const smInput = $('#sunny-memories-output-summary');
+        if (smInput.length) smInput.val($(this).val()).trigger('input').trigger('blur');
+    });
+
+    $('#mini-facts-area').on('input blur', function() {
+        const smInput = $('#sunny-memories-output-facts');
+        if (smInput.length) smInput.val($(this).val()).trigger('input').trigger('blur');
+    });
+
+    $('#mini-sum-gen').on('click', () => { $('.sm-generate-btn[data-type="summary"]').click(); });
+    $('#mini-sum-lib').on('click', () => { $('.sm-save-lib-btn[data-type="summary"]').click(); });
+    
+    $('#mini-facts-gen').on('click', () => { $('.sm-generate-btn[data-type="facts"]').click(); });
+    $('#mini-facts-split').on('click', () => { $('.sm-split-lib-btn').click(); });
+    $('#mini-facts-lib').on('click', () => { $('.sm-save-lib-btn[data-type="facts"]').click(); });
+
+    $('#mini-quest-gen').on('click', () => { $('#sm-btn-generate-quests').click(); });
+    $('#mini-event-gen').on('click', () => { $('#sm-btn-generate-events').click(); });
+
+    const restoreManual = (type) => {
+        const context = SillyTavern.getContext();
+        if (!context || !context.chat || context.chat.length === 0) return;
+        const mem = context.chat[0].extra?.sunny_memories;
+        
+        if (type === 'summary' && mem && mem.previousSummary !== undefined) {
+            $('#mini-sum-area').val(mem.previousSummary);
+            $('#sunny-memories-output-summary').val(mem.previousSummary).trigger('input').trigger('blur');
+            toastr.success("Summary restored locally.", "Sunny QuickPanel");
+        } else if (type === 'facts' && mem && mem.previousFacts !== undefined) {
+            $('#mini-facts-area').val(mem.previousFacts);
+            $('#sunny-memories-output-facts').val(mem.previousFacts).trigger('input').trigger('blur');
+            toastr.success("Facts restored locally.", "Sunny QuickPanel");
+        } else {
+            toastr.info("No previous data to restore.", "Sunny QuickPanel");
         }
+    };
+
+    $('#mini-sum-restore').on('click', () => restoreManual('summary'));
+    $('#mini-facts-restore').on('click', () => restoreManual('facts'));
+
+
+    $('#mini-open-main').on('click', () => {
+        toggleSunnyPopup(false);
+        $('#sm-main-btn-memories').click(); 
+        const drawer = $('#extensions_settings').closest('.drawer-content');
+        if(drawer.length) drawer.animate({ scrollTop: $('#sunny_memories_settings').offset().top - drawer.offset().top + drawer.scrollTop() }, 300);
+    });
+}
+
+function updateSunnyPopupData() {
+    const context = SillyTavern.getContext();
+    if (!context || !context.chat || context.chat.length === 0) return;
+    
+    const mes = context.chat[0];
+    const sm = mes.extra?.sunny_memories || {};
+    
+    const sumArea = document.getElementById('mini-sum-area');
+    const factsArea = document.getElementById('mini-facts-area');
+
+    if (sumArea && document.activeElement !== sumArea) {
+        sumArea.value = sm.summary || "";
+    }
+    if (factsArea && document.activeElement !== factsArea) {
+        factsArea.value = sm.facts || "";
     }
 }
 
-function toggleSumPopup(show) {
-    const popup = document.getElementById('tracker-sum-popup');
+function toggleSunnyPopup(show) {
+    const popup = document.getElementById('tracker-sunny-popup');
     if (!popup) return;
 
     if (show) {
-        updatePopupContentFromContext();
+        updateSunnyPopupData();
 
         if (!popup.style.left && !popup.style.top) {
             const panel = document.getElementById('chat-tracker-panel');
@@ -1040,7 +1030,7 @@ function toggleSumPopup(show) {
             popup.style.top = (rect.top + 50) + 'px'; 
 
             if (rect.left > window.innerWidth / 2) {
-                popup.style.left = (rect.left - 310) + 'px'; 
+                popup.style.left = (rect.left - 360) + 'px'; 
             } else {
                 popup.style.left = (rect.right + 10) + 'px';
             }

@@ -996,17 +996,22 @@ $('#mini-sum-area, #mini-facts-area').on('input', function() {
         }
     };
 
-    $('#mini-sum-restore').on('click', () => restoreManual('summary'));
-    $('#mini-facts-restore').on('click', () => restoreManual('facts'));
-
-
-    $('#mini-open-main').on('click', () => {
+$('#mini-open-main').on('click', () => {
         toggleSunnyPopup(false);
+        
         $('#sm-main-btn-memories').click(); 
+        
         const drawer = $('#extensions_settings').closest('.drawer-content');
-        if(drawer.length) drawer.animate({ scrollTop: $('#sunny_memories_settings').offset().top - drawer.offset().top + drawer.scrollTop() }, 300);
+        const smSettings = $('#sunny_memories_settings');
+        
+        if (drawer.length > 0 && smSettings.length > 0) {
+            drawer.animate({ 
+                scrollTop: smSettings.offset().top - drawer.offset().top + drawer.scrollTop() 
+            }, 300);
+        } else {
+            console.log('[ChatTracker] SunnyMemories settings are not rendered yet, scroll canceled.');
+        }
     });
-}
 
 function updateSunnyPopupData() {
     const context = SillyTavern.getContext();

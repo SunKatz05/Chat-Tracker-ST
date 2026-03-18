@@ -14,7 +14,7 @@ ___
 - Display of the last message captured when creating a summary
 ___
 # 1.0.2 Update
-- Integration with my new extension https://github.com/SunKatz05/SunnyMemories
+- Integration with my new extension https://github.com/SunKatz05/SunnyMemories now bonded
 - The quick access window has been updated, allowing to manage modes: summary, facts, quests & events
 ___
 Made by сунризе

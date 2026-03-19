@@ -165,7 +165,7 @@ body.light-theme .tracker-toggle:hover {
 .tokens-vertical-block {
     flex-direction: column !important;
     align-items: center !important;
-    padding: 4px 6px 2px 6px !important;
+    padding: 4px 6px 6px 6px !important;
     gap: 2px !important;
 }
 
@@ -185,18 +185,77 @@ body.light-theme .tracker-toggle:hover {
     margin-bottom: 2px;
 }
 
+/* --- СТИЛИ ДЛЯ КНОПОК РЕЖИМОВ ПОД ТОКЕНАМИ --- */
+.mode-buttons-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    width: 100%;
+}
+
+.mode-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    color: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 3px 0;
+    text-transform: uppercase;
+    transition: all 0.2s ease;
+    flex: 1;
+    text-align: center;
+    letter-spacing: 0.5px;
+}
+
+.mode-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.mode-btn.active {
+    background: rgba(255, 170, 0, 0.15);
+    color: var(--SmartThemeQuoteColor, #ffaa00);
+    border-color: rgba(255, 170, 0, 0.4);
+    box-shadow: 0 0 5px rgba(255, 170, 0, 0.1);
+}
+
+body.light-theme .mode-btn {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.5);
+}
+
+body.light-theme .mode-btn:hover {
+    background: rgba(0, 0, 0, 0.1);
+    color: #000;
+    border-color: rgba(0, 0, 0, 0.2);
+}
+
+body.light-theme .mode-btn.active {
+    background: rgba(255, 170, 0, 0.2);
+    color: #d87c00;
+    border-color: rgba(255, 170, 0, 0.5);
+}
+
+/* Кнопка лимита теперь компактнее, чтобы влезать в ряд с переключателями (если нужно) */
 .edit-limit-btn {
     background: transparent !important;
     border: none !important;
     color: inherit !important;
     cursor: pointer;
-    font-size: 16px;
+    font-size: 14px;
     line-height: 1;
     opacity: 0.4;
-    padding: 2px 10px !important;
+    padding: 2px 6px !important;
     transition: all 0.2s ease;
-    display: block;
-    width: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .edit-limit-btn:hover {

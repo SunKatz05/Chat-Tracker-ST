@@ -79,6 +79,7 @@ window.fetch = async (...args) => {
                     const promptText = body.messages.map(m => m.content || '').join('\n');
                     const estimatedPrompt = context.getTokenCount(promptText);
                     lastUsage.prompt = estimatedPrompt;
+                    lastUsage.total = estimatedPrompt;
                     updateContextDisplay('fetch:request');
                 }
             }
@@ -567,7 +568,8 @@ function updateHiddenCount() {
 
 function getTokenCountWithMethod() {
     if (tokenMode === 'api') {
-        return { method: 'api', tokens: lastUsage.total || 0 };
+        const apiTokens = lastUsage.total || (lastUsage.prompt + lastUsage.completion) || lastUsage.prompt || 0;
+        return { method: 'api', tokens: apiTokens };
     }
     try {
         const context = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;

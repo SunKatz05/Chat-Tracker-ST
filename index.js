@@ -20,6 +20,8 @@ let maxTokens = 50000;
 let tokenMode = 'api';
 let lastUsage = { prompt: 0, completion: 0, total: 0 };
 
+let isSunnyMode = false;
+
 const CHAT_TRACKER_DEBUG = false;
 
 function debugLog(...args) {
@@ -127,7 +129,6 @@ jQuery(async function() {
         loadState();
         createTrackerPanel();
         await waitForSillyTavernReady();
-        debugLog('contextReady after wait:', contextReady);
         refreshAll('init');
         setupEventListeners();
         setupTokenObservers();
@@ -146,30 +147,18 @@ function waitForSillyTavernReady() {
 
         const check = () => {
             initializationRetries++;
-
             if (typeof SillyTavern === 'undefined') {
                 if (initializationRetries < maxRetries) setTimeout(check, checkInterval);
                 else resolve();
                 return;
             }
-
             try {
                 const context = SillyTavern.getContext();
-                if (!context) {
+                if (!context || context.chat === undefined || context.chat === null) {
                     if (initializationRetries < maxRetries) setTimeout(check, checkInterval);
-                    else resolve();
+                    else { contextReady = true; resolve(); }
                     return;
                 }
-
-                if (context.chat === undefined || context.chat === null) {
-                    if (initializationRetries < maxRetries) setTimeout(check, checkInterval);
-                    else {
-                        contextReady = true;
-                        resolve();
-                    }
-                    return;
-                }
-
                 contextReady = true;
                 resolve();
             } catch (error) {
@@ -177,7 +166,6 @@ function waitForSillyTavernReady() {
                 else resolve();
             }
         };
-
         check();
     });
 }
@@ -187,10 +175,8 @@ function setupDraggable(el, handle) {
 
     const onMove = (e) => {
         if (!isDragging) return;
-
         const clientX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
         const clientY = e.type === 'touchmove' ? e.touches[0].clientY : e.clientY;
-
         const dx = clientX - dragStartX;
         const dy = clientY - dragStartY;
 
@@ -201,7 +187,6 @@ function setupDraggable(el, handle) {
 
         let newLeft = panelStartX + dx;
         let newTop = panelStartY + dy;
-
         newLeft = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, newLeft));
         newTop = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, newTop));
 
@@ -215,10 +200,8 @@ function setupDraggable(el, handle) {
         if (isDragging) {
             isDragging = false;
             el.classList.remove('dragging');
-
             const rect = el.getBoundingClientRect();
             const windowWidth = window.innerWidth;
-
             if ((rect.left + rect.width / 2) > windowWidth / 2) {
                 const rightDist = windowWidth - rect.right;
                 el.style.left = 'auto';
@@ -227,10 +210,7 @@ function setupDraggable(el, handle) {
                 el.style.right = 'auto';
                 el.style.left = rect.left + 'px';
             }
-
-            if (el.id === 'chat-tracker-panel') {
-                saveState();
-            }
+            if (el.id === 'chat-tracker-panel') saveState();
             setTimeout(() => { hasMoved = false; }, 50);
         }
         window.removeEventListener('mousemove', onMove);
@@ -240,17 +220,13 @@ function setupDraggable(el, handle) {
     };
 
     const onStart = (e) => {
-        if (e.target.closest('button, input, textarea, .tracker-popup-close, .edit-limit-btn, .sunny-tab-btn, .mode-btn')) return;
-
+        if (e.target.closest('button, input, textarea, .tracker-popup-close, .edit-limit-btn, .sunny-panel-tab, .mode-btn')) return;
         isDragging = true;
         hasMoved = false;
-
         const clientX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
         const clientY = e.type === 'touchstart' ? e.touches[0].clientY : e.clientY;
-
         dragStartX = clientX;
         dragStartY = clientY;
-
         const rect = el.getBoundingClientRect();
         panelStartX = rect.left;
         panelStartY = rect.top;
@@ -275,79 +251,62 @@ function createTrackerPanel() {
 
         const header = document.createElement('div');
         header.className = 'tracker-header';
-
-        const svgIcon = `
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                <line x1="8" y1="9" x2="16" y2="9"/>
-                <line x1="8" y1="13" x2="14" y2="13"/>
-            </svg>
+        header.innerHTML = `
+            <span class="tracker-icon" title="Chat Tracker">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    <line x1="8" y1="9" x2="16" y2="9"/>
+                    <line x1="8" y1="13" x2="14" y2="13"/>
+                </svg>
+            </span>
+            <button class="tracker-toggle" id="tracker-toggle" title="Toggle"><span class="toggle-arrow">▼</span></button>
         `;
-        const icon = document.createElement('span');
-        icon.className = 'tracker-icon';
-        icon.title = 'Chat Tracker';
-        icon.innerHTML = svgIcon;
-
-        const toggleButton = document.createElement('button');
-        toggleButton.className = 'tracker-toggle';
-        toggleButton.id = 'tracker-toggle';
-        toggleButton.title = 'Toggle';
-        const arrow = document.createElement('span');
-        arrow.className = 'toggle-arrow';
-        arrow.textContent = '▼';
-        toggleButton.appendChild(arrow);
-
-        header.appendChild(icon);
-        header.appendChild(toggleButton);
 
         const content = document.createElement('div');
         content.className = 'tracker-content';
         content.id = 'tracker-content';
-
-        const messagesDiv = document.createElement('div');
-        messagesDiv.className = 'tracker-stat';
-        messagesDiv.innerHTML = `
-            <span class="stat-label">Messages:</span>
-            <span class="stat-value" id="stat-messages">0</span>
-        `;
-
-        const hiddenDiv = document.createElement('div');
-        hiddenDiv.className = 'tracker-stat';
-        hiddenDiv.innerHTML = `
-            <span class="stat-label">Hidden:</span>
-            <span class="stat-value" id="stat-hidden">0</span>
-        `;
-
-        const contextDiv = document.createElement('div');
-
-        contextDiv.className = 'tracker-stat tokens-vertical-block';
-        contextDiv.innerHTML = `
-            <div class="tokens-label-top">Tokens:</div>
-            <div id="stat-context" class="tokens-numbers-mid">
-                <span class="context-text">0 / 0</span>
-                <span class="context-percent">(0%)</span>
+        content.innerHTML = `
+            <div class="tracker-stat">
+                <span class="stat-label">Messages:</span>
+                <span class="stat-value" id="stat-messages">0 <span id="trigger-sunny-panel" class="tracker-btn-create" title="Toggle Sunny Tools"><i class="fa-solid fa-sun"></i></span></span>
             </div>
-            <div class="mode-buttons-container">
-                <button class="mode-btn ${tokenMode === 'chat' ? 'active' : ''}" data-mode="chat" title="Visible chat history">CHAT</button>
-                <button class="mode-btn ${tokenMode === 'api' ? 'active' : ''}" data-mode="api" title="API Prompt tokens">API</button>
-                <button class="edit-limit-btn" id="edit-limit-btn" title="Edit token limit">✎</button>
+            <div class="tracker-stat">
+                <span class="stat-label">Hidden:</span>
+                <span class="stat-value" id="stat-hidden">0</span>
+            </div>
+            <div class="tracker-stat tokens-vertical-block" style="position:relative; min-height: 50px;">
+                <div id="stat-context-container" style="display:flex; flex-direction:column; width:100%; align-items:center;">
+                    <div class="tokens-label-top">Tokens:</div>
+                    <div id="stat-context" class="tokens-numbers-mid">
+                        <span class="context-text">0 / 0</span>
+                        <span class="context-percent">(0%)</span>
+                    </div>
+                    <div class="mode-buttons-container">
+                        <button class="mode-btn ${tokenMode === 'chat' ? 'active' : ''}" data-mode="chat" title="Visible chat history">CHAT</button>
+                        <button class="mode-btn ${tokenMode === 'api' ? 'active' : ''}" data-mode="api" title="API Prompt tokens">API</button>
+                        <button class="edit-limit-btn" id="edit-limit-btn" title="Edit token limit">✎</button>
+                    </div>
+                </div>
+                <div id="sunny-panel-tabs" style="display:none; width:100%; flex-direction:column; gap:4px; padding-top:2px;">
+                    <div style="font-size:9px; font-weight:bold; color:var(--SmartThemeQuoteColor, #ffaa00); text-align:center; letter-spacing:1px; margin-bottom:2px; opacity:0.8;">SUNNY TOOLS</div>
+                    <div style="display:flex; gap:4px; width:100%;">
+                        <button class="sunny-panel-tab active" data-tab="sum">SUM</button>
+                        <button class="sunny-panel-tab" data-tab="facts">FACTS</button>
+                    </div>
+                    <div style="display:flex; gap:4px; width:100%;">
+                        <button class="sunny-panel-tab" data-tab="qc">Q&C</button>
+                        <button class="sunny-panel-tab" data-tab="lib">LIB</button>
+                    </div>
+                </div>
             </div>
         `;
-
-        content.appendChild(messagesDiv);
-        content.appendChild(hiddenDiv);
-        content.appendChild(contextDiv);
 
         panel.appendChild(header);
         panel.appendChild(content);
-
         document.body.appendChild(panel);
 
-        const toggleBtn = document.getElementById('tracker-toggle');
-        if (toggleBtn) toggleBtn.addEventListener('click', togglePanel);
-
-        const editLimitBtn = document.getElementById('edit-limit-btn');
-        if (editLimitBtn) editLimitBtn.addEventListener('click', openLimitEditor);
+        document.getElementById('tracker-toggle')?.addEventListener('click', togglePanel);
+        document.getElementById('edit-limit-btn')?.addEventListener('click', openLimitEditor);
 
         const modeBtns = document.querySelectorAll('.mode-btn');
         modeBtns.forEach(btn => {
@@ -357,10 +316,8 @@ function createTrackerPanel() {
                 if (newMode) {
                     tokenMode = newMode;
                     localStorage.setItem('chatTrackerTokenMode', tokenMode);
-                    
                     modeBtns.forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
-                    
                     updateContextDisplay('mode-switch');
                 }
             });
@@ -377,7 +334,6 @@ function togglePanel(event) {
     const panel = document.getElementById('chat-tracker-panel');
     const content = document.getElementById('tracker-content');
     const arrow = document.querySelector('.toggle-arrow');
-
     if (!panel || !content) return;
 
     isCollapsed = !isCollapsed;
@@ -388,7 +344,6 @@ function togglePanel(event) {
         content.style.maxHeight = `${content.scrollHeight}px`;
         content.style.opacity = '1';
         content.offsetHeight;
-
         requestAnimationFrame(() => {
             content.style.maxHeight = '0px';
             content.style.opacity = '0';
@@ -397,7 +352,6 @@ function togglePanel(event) {
             panel.style.padding = '0px';
             if (arrow) arrow.style.transform = 'rotate(-90deg)';
         });
-
         setTimeout(() => {
             panel.style.width = '';
             panel.style.height = '';
@@ -408,16 +362,13 @@ function togglePanel(event) {
         panel.classList.remove('collapsed');
         content.style.maxHeight = `${content.scrollHeight}px`;
         content.style.opacity = '1';
-
         panel.style.width = '';
         panel.style.height = '';
         panel.style.padding = '';
         panel.offsetHeight;
-
         const targetWidth = panel.offsetWidth;
         const targetHeight = panel.offsetHeight;
         const targetPadding = window.getComputedStyle(panel).padding;
-
         panel.classList.add('collapsed');
         content.style.maxHeight = '0px';
         content.style.opacity = '0';
@@ -458,18 +409,15 @@ function setupEventListeners() {
 
         const handleRefreshEvent = (eventName, opts = {}) => {
             const { delayMs = 0, resetIntercepted = false } = opts;
-
             if (resetIntercepted) {
                 lastInterceptedTokenCount = 0;
                 lastUsage = { prompt: 0, completion: 0, total: 0 };
                 setupTokenObservers();
             }
-
             if (delayMs > 0) {
                 setTimeout(() => refreshAll(eventName), delayMs);
                 return;
             }
-
             refreshAll(eventName);
             setTimeout(() => updateContextDisplay(`${eventName}:follow-up`), 75);
             setTimeout(() => updateContextDisplay(`${eventName}:follow-up2`), 350);
@@ -482,13 +430,8 @@ function setupEventListeners() {
             if(!evt) return;
             const isGenEnd = evt === (types?.GENERATION_ENDED || 'generation_ended');
             const isChatChange = evt === (types?.CHAT_CHANGED || 'chat_changed');
-            
             eventSource.on(evt, () => {
-                handleRefreshEvent(evt, { 
-                    delayMs: isGenEnd ? 500 : 0, 
-                    resetIntercepted: isChatChange 
-                });
-                
+                handleRefreshEvent(evt, { delayMs: isGenEnd ? 500 : 0, resetIntercepted: isChatChange });
                 setTimeout(() => {
                     if (document.getElementById('tracker-sunny-popup')?.style.display !== 'none') {
                         updateSunnyPopupData();
@@ -511,19 +454,16 @@ function setupEventListeners() {
 function updateMessageCount() {
     const context = SillyTavern.getContext();
     if (!context || !context.chat) return;
-    
     let visibleCount = 0;
     context.chat.forEach((msg) => {
         if (msg.is_system !== true && !isMessageHidden(msg)) visibleCount++;
     });
 
     if (visibleCount === lastVisibleMessageCount) return;
-
     const element = document.getElementById('stat-messages');
-    
     if (element) {
         lastVisibleMessageCount = visibleCount; 
-        element.innerHTML = `${visibleCount} <span id="trigger-sunny-panel" class="tracker-btn-create" title="Open SunnyMemories Quick Panel"><i class="fa-solid fa-sun"></i></span>`;
+        element.innerHTML = `${visibleCount} <span id="trigger-sunny-panel" class="tracker-btn-create" title="Toggle Sunny Tools"><i class="fa-solid fa-sun"></i></span>`;
     }
 }
 
@@ -587,22 +527,11 @@ function getTokenCountWithMethod() {
     if (tokenMode === 'api') {
         return { method: 'api', tokens: lastUsage.prompt || 0 };
     }
-    
     try {
         const context = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
-        if (!context || !context.chat) {
-            return { method: 'chat', tokens: 0 };
-        }
-
-        const visibleMessages = context.chat
-            .filter(msg => !isMessageHidden(msg))
-            .map(msg => msg.mes || "")
-            .join("\n");
-
-        if (!visibleMessages || visibleMessages.trim().length === 0) {
-            return { method: 'chat', tokens: 0 };
-        }
-
+        if (!context || !context.chat) return { method: 'chat', tokens: 0 };
+        const visibleMessages = context.chat.filter(msg => !isMessageHidden(msg)).map(msg => msg.mes || "").join("\n");
+        if (!visibleMessages || visibleMessages.trim().length === 0) return { method: 'chat', tokens: 0 };
         const estimate = context.getTokenCount(visibleMessages);
         return { method: 'chat', tokens: typeof estimate === 'number' ? estimate : 0 };
     } catch (e) {
@@ -613,19 +542,14 @@ function getTokenCountWithMethod() {
 function updateContextDisplay(trigger = 'update') {
     const { tokens: current, method } = getTokenCountWithMethod();
     const percentage = maxTokens > 0 ? Math.round((current / maxTokens) * 100) : 0;
-
     const element = document.getElementById('stat-context');
     if (!element) return;
-
     if (current !== lastDisplayedTokenCount || method !== lastDisplayedTokenMethod) {
         lastDisplayedTokenCount = current;
         lastDisplayedTokenMethod = method;
-        
         const textDiv = element.querySelector('.context-text');
         const percentDiv = element.querySelector('.context-percent');
-
         if (textDiv) textDiv.textContent = `${current.toLocaleString()} / ${maxTokens.toLocaleString()}`;
-
         if (percentDiv) {
             percentDiv.textContent = `(${percentage}%)`;
             percentDiv.style.color = '';
@@ -639,7 +563,6 @@ function updateContextDisplay(trigger = 'update') {
 function setupTokenObservers() {
     try {
         tokenUiObserver?.disconnect();
-
         const target = document.querySelector('.prompt_total_tokens');
         if (!target) {
             if (tokenUiObserverRetries < 10) {
@@ -648,13 +571,8 @@ function setupTokenObservers() {
             }
             return;
         }
-
         tokenUiObserverRetries = 0;
-
-        tokenUiObserver = new MutationObserver(() => {
-            updateContextDisplay('ui-mutation');
-        });
-
+        tokenUiObserver = new MutationObserver(() => updateContextDisplay('ui-mutation'));
         tokenUiObserver.observe(target, { childList: true, subtree: true, characterData: true });
     } catch (e) {}
 }
@@ -690,38 +608,26 @@ function openLimitEditor(event) {
     const panel = document.getElementById('chat-tracker-panel');
     const rect = panel.getBoundingClientRect();
     popup.style.top = (rect.top + 80) + 'px';
-    if (rect.left > window.innerWidth / 2) {
-        popup.style.left = (rect.left - 200) + 'px';
-    } else {
-        popup.style.left = (rect.right + 10) + 'px';
-    }
+    if (rect.left > window.innerWidth / 2) popup.style.left = (rect.left - 200) + 'px';
+    else popup.style.left = (rect.right + 10) + 'px';
     popup.style.display = 'flex';
     popup.style.width = '200px';
     
     const input = document.getElementById('limit-input');
-    const closeBtn = document.getElementById('tracker-limit-close');
-    const cancelBtn = document.getElementById('limit-cancel');
-    const saveBtn = document.getElementById('limit-save');
-    const header = document.getElementById('tracker-limit-drag');
-    setupDraggable(popup, header);
+    setupDraggable(popup, document.getElementById('tracker-limit-drag'));
 
-    function closePopup() {
-        popup.remove();
-    }
+    const closePopup = () => popup.remove();
+    document.getElementById('tracker-limit-close').onclick = closePopup;
+    document.getElementById('limit-cancel').onclick = closePopup;
 
-    closeBtn.onclick = closePopup;
-    cancelBtn.onclick = closePopup;
-
-    saveBtn.onclick = () => {
+    document.getElementById('limit-save').onclick = () => {
         const val = parseInt(input.value.trim());
         if (!isNaN(val) && val >= 0 && val <= 128000) {
             maxTokens = val;
             localStorage.setItem('chatTrackerMaxTokens', maxTokens.toString());
             updateContextDisplay();
             closePopup();
-        } else {
-            toastr.error("Invalid token limit", "Chat Tracker");
-        }
+        } else toastr.error("Invalid token limit", "Chat Tracker");
     };
     setTimeout(() => input.focus(), 50);
 }
@@ -731,14 +637,10 @@ function loadMaxTokens() {
         const saved = localStorage.getItem('chatTrackerMaxTokens');
         if (saved !== null) {
             const value = parseInt(saved);
-            if (!isNaN(value) && value >= 0 && value <= 128000) {
-                maxTokens = value;
-            }
+            if (!isNaN(value) && value >= 0 && value <= 128000) maxTokens = value;
         }
         const savedMode = localStorage.getItem('chatTrackerTokenMode');
-        if (savedMode === 'api' || savedMode === 'chat') {
-            tokenMode = savedMode;
-        }
+        if (savedMode === 'api' || savedMode === 'chat') tokenMode = savedMode;
     } catch (error) {}
 }
 
@@ -756,17 +658,11 @@ function saveState() {
     try {
         const panel = document.getElementById('chat-tracker-panel');
         if (!panel) return;
-
         const rect = panel.getBoundingClientRect();
         const winWidth = window.innerWidth;
         const isRightSide = rect.left + (rect.width / 2) > winWidth / 2;
 
-        const state = {
-            collapsed: isCollapsed,
-            top: panel.style.top,
-            isRight: isRightSide
-        };
-
+        const state = { collapsed: isCollapsed, top: panel.style.top, isRight: isRightSide };
         if (isRightSide) {
             state.right = (winWidth - rect.right) + 'px';
             state.left = 'auto';
@@ -774,9 +670,8 @@ function saveState() {
             state.left = panel.style.left;
             state.right = 'auto';
         }
-
         localStorage.setItem('chatTracker_settings', JSON.stringify(state));
-    } catch (error) { console.error("Save error:", error); }
+    } catch (error) {}
 }
 
 function loadState() {
@@ -784,17 +679,11 @@ function loadState() {
         const saved = localStorage.getItem('chatTracker_settings');
         if (!saved) return;
         const state = JSON.parse(saved);
-        
         const panel = document.getElementById('chat-tracker-panel');
         if (panel) {
             panel.style.top = state.top || '40px';
-            if (state.isRight) {
-                panel.style.right = state.right;
-                panel.style.left = 'auto';
-            } else {
-                panel.style.left = state.left;
-                panel.style.right = 'auto';
-            }
+            if (state.isRight) { panel.style.right = state.right; panel.style.left = 'auto'; } 
+            else { panel.style.left = state.left; panel.style.right = 'auto'; }
             if (state.collapsed) {
                 isCollapsed = true;
                 const content = document.getElementById('tracker-content');
@@ -803,10 +692,7 @@ function loadState() {
                     panel.classList.add('collapsed');
                     content.style.maxHeight = '0px';
                     content.style.opacity = '0';
-                    if (arrow) {
-                        arrow.textContent = '▼';
-                        arrow.style.transform = 'rotate(-90deg)';
-                    }
+                    if (arrow) { arrow.textContent = '▼'; arrow.style.transform = 'rotate(-90deg)'; }
                 }
             }
         }
@@ -815,19 +701,35 @@ function loadState() {
 }
 
 function setupSunnyEvents() {
-    const statEl = document.getElementById('stat-messages');
-    if (!statEl) return;
-
-    statEl.onclick = (e) => {
-        const triggerBtn = e.target.closest('#trigger-sunny-panel');
-        if (triggerBtn) {
-            if (!window.extension_settings?.SunnyMemories) {
-                toastr.warning("Please install/enable SunnyMemories extension.", "Sunny QuickPanel");
-                return;
-            }
-            toggleSunnyPopup(true);
+    $(document).on('click', '#trigger-sunny-panel', function(e) {
+        e.stopPropagation();
+        if (!window.extension_settings?.SunnyMemories) {
+            toastr.warning("Please install/enable SunnyMemories extension.", "Sunny QuickPanel");
+            return;
         }
-    };
+        isSunnyMode = !isSunnyMode;
+        document.getElementById('stat-context-container').style.display = isSunnyMode ? 'none' : 'flex';
+        document.getElementById('sunny-panel-tabs').style.display = isSunnyMode ? 'flex' : 'none';
+        this.style.color = isSunnyMode ? '#ffcc00' : '';
+        this.style.textShadow = isSunnyMode ? '0 0 8px rgba(255, 204, 0, 0.6)' : '';
+        
+        if (!isSunnyMode) toggleSunnyPopup(false);
+    });
+
+    $(document).on('click', '.sunny-panel-tab', function(e) {
+        e.stopPropagation();
+        $('.sunny-panel-tab').removeClass('active');
+        $(this).addClass('active');
+        
+        const target = $(this).data('tab');
+        const titles = { sum: 'STORY SUMMARY', facts: 'ESTABLISHED FACTS', qc: 'QUESTS & CALENDAR', lib: 'LIBRARY' };
+        
+        $('#sunny-popup-title-text').text(titles[target]);
+        $('.sunny-tab-content').removeClass('active');
+        $('#sunny-tab-' + target).addClass('active');
+        
+        toggleSunnyPopup(true);
+    });
 
     createSunnyPopup();
 }
@@ -837,57 +739,52 @@ function createSunnyPopup() {
 
     const popup = document.createElement('div');
     popup.id = 'tracker-sunny-popup';
-    popup.className = 'tracker-popup';
-    popup.style.width = '350px'; 
+    popup.className = 'tracker-popup beautiful-popup';
+    popup.style.width = '320px'; 
     
     popup.innerHTML = `
-        <div class="tracker-popup-header" id="tracker-sunny-drag">
-            <span><i class="fa-solid fa-sun"></i> SUNNY MEMORIES QUICK</span>
+        <div class="tracker-popup-header beautiful-header" id="tracker-sunny-drag">
+            <div class="beautiful-title"><i class="fa-solid fa-sun" style="color:var(--SmartThemeQuoteColor, #ffaa00); margin-right:6px;"></i><span id="sunny-popup-title-text">STORY SUMMARY</span></div>
             <span class="tracker-popup-close" id="tracker-sunny-close">&times;</span>
         </div>
-        <div class="sunny-tabs">
-            <div class="sunny-tab-btn active" data-tab="sum">Summary</div>
-            <div class="sunny-tab-btn" data-tab="facts">Facts</div>
-            <div class="sunny-tab-btn" data-tab="qc">Q & C</div>
-            <div class="sunny-tab-btn" data-tab="lib">Library</div>
-        </div>
-        <div class="tracker-popup-body sunny-popup-body">
+        <div class="tracker-popup-body beautiful-body">
             
             <div class="sunny-tab-content active" id="sunny-tab-sum">
-                <textarea id="mini-sum-area" placeholder="Story Summary..."></textarea>
-                <div class="sunny-actions">
-                    <button class="sunny-action-btn sunny-gen-btn" id="mini-sum-gen"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate</button>
-                    <button class="sunny-action-btn" id="mini-sum-restore"><i class="fa-solid fa-rotate-left"></i> Restore</button>
-                    <button class="sunny-action-btn" id="mini-sum-lib"><i class="fa-solid fa-book"></i> To Lib</button>
+                <textarea id="mini-sum-area" class="beautiful-textarea" placeholder="Story Summary..."></textarea>
+                <div class="beautiful-actions">
+                    <button class="beautiful-btn beautiful-btn-primary" id="mini-sum-gen"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate</button>
+                    <button class="beautiful-btn" id="mini-sum-restore"><i class="fa-solid fa-rotate-left"></i> Restore</button>
+                    <button class="beautiful-btn" id="mini-sum-lib"><i class="fa-solid fa-book"></i> To Lib</button>
                 </div>
             </div>
 
             <div class="sunny-tab-content" id="sunny-tab-facts">
-                <textarea id="mini-facts-area" placeholder="Established Facts..."></textarea>
-                <div class="sunny-actions">
-                    <button class="sunny-action-btn sunny-gen-btn" id="mini-facts-gen"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate</button>
-                    <button class="sunny-action-btn" id="mini-facts-restore"><i class="fa-solid fa-rotate-left"></i></button>
-                    <button class="sunny-action-btn" id="mini-facts-split"><i class="fa-solid fa-object-ungroup"></i> Split</button>
-                    <button class="sunny-action-btn" id="mini-facts-lib"><i class="fa-solid fa-book"></i> To Lib</button>
+                <textarea id="mini-facts-area" class="beautiful-textarea" placeholder="Established Facts..."></textarea>
+                <div class="beautiful-actions">
+                    <button class="beautiful-btn beautiful-btn-primary" id="mini-facts-gen"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate</button>
+                    <button class="beautiful-btn" id="mini-facts-restore"><i class="fa-solid fa-rotate-left"></i></button>
+                    <button class="beautiful-btn" id="mini-facts-split"><i class="fa-solid fa-object-ungroup"></i> Split</button>
+                    <button class="beautiful-btn" id="mini-facts-lib"><i class="fa-solid fa-book"></i> To Lib</button>
                 </div>
             </div>
 
             <div class="sunny-tab-content" id="sunny-tab-qc">
-                <div id="mini-qc-display" style="font-size: 11px; padding: 5px; background: rgba(0,0,0,0.3); border-radius: 4px; margin-bottom: 5px; color: #ccc;">
-                    <strong>Last Quest:</strong> <span id="mini-last-quest">None</span><br>
-                    <strong>Last Event:</strong> <span id="mini-last-event">None</span>
+                <div id="mini-qc-display" style="font-size: 12px; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 5px; color: #ddd; line-height: 1.5;">
+                    <div style="margin-bottom: 8px;"><strong style="color:var(--SmartThemeQuoteColor, #ffaa00);">Last Quest:</strong><br> <span id="mini-last-quest" style="opacity:0.9;">None</span></div>
+                    <div><strong style="color:var(--SmartThemeQuoteColor, #ffaa00);">Last Event:</strong><br> <span id="mini-last-event" style="opacity:0.9;">None</span></div>
                 </div>
-                <div class="sunny-actions" style="flex-direction: column; gap: 8px;">
-                    <button class="sunny-action-btn sunny-gen-btn" id="mini-quest-gen" style="width:100%;"><i class="fa-solid fa-scroll"></i> Extract Quests</button>
-                    <button class="sunny-action-btn sunny-gen-btn" id="mini-event-gen" style="width:100%;"><i class="fa-solid fa-calendar-day"></i> Extract Events</button>
+                <div class="beautiful-actions" style="flex-direction: column; gap: 8px; margin-top: 12px;">
+                    <button class="beautiful-btn beautiful-btn-primary" id="mini-quest-gen" style="width:100%;"><i class="fa-solid fa-scroll"></i> Extract Quests</button>
+                    <button class="beautiful-btn beautiful-btn-primary" id="mini-event-gen" style="width:100%;"><i class="fa-solid fa-calendar-day"></i> Extract Events</button>
                 </div>
             </div>
 
             <div class="sunny-tab-content" id="sunny-tab-lib">
-                <div style="font-size: 11px; text-align:center; padding: 15px 0; color: rgba(255,255,255,0.6);">
+                <div style="font-size: 12px; text-align:center; padding: 25px 10px; color: rgba(255,255,255,0.5); line-height:1.5;">
+                    <i class="fa-solid fa-boxes-stacked" style="font-size:24px; margin-bottom:10px; opacity:0.5;"></i><br>
                     Fragment management requires full interface.
                 </div>
-                <button class="sunny-action-btn" id="mini-open-main" style="width:100%; padding: 10px;"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open Full SunnyMemories</button>
+                <button class="beautiful-btn" id="mini-open-main" style="width:100%; padding: 12px; margin-top:10px;"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open Full SunnyMemories</button>
             </div>
 
         </div>
@@ -896,27 +793,15 @@ function createSunnyPopup() {
     document.body.appendChild(popup);
     setupDraggable(popup, document.getElementById('tracker-sunny-drag'));
 
-    $('.sunny-tab-btn').on('click', function() {
-        $('.sunny-tab-btn').removeClass('active');
-        $('.sunny-tab-content').removeClass('active');
-        $(this).addClass('active');
-        $('#sunny-tab-' + $(this).data('tab')).addClass('active');
-        updateSunnyPopupData(); 
-    });
-
     $('#tracker-sunny-close').on('click', () => toggleSunnyPopup(false));
 
     let miniTypingTimer;
     $('#mini-sum-area, #mini-facts-area').on('input', function() {
         const isSum = $(this).attr('id') === 'mini-sum-area';
         const target = isSum ? $('#sunny-memories-output-summary') : $('#sunny-memories-output-facts');
-        
         if (target.length) target.val($(this).val()); 
-        
         clearTimeout(miniTypingTimer);
-        miniTypingTimer = setTimeout(() => {
-            if (target.length) target.trigger('blur'); 
-        }, 1000);
+        miniTypingTimer = setTimeout(() => { if (target.length) target.trigger('blur'); }, 1000);
     });
 
     $('#mini-facts-area').on('input blur', function() {
@@ -926,19 +811,19 @@ function createSunnyPopup() {
 
     $('#mini-sum-gen').on('click', () => { $('.sm-generate-btn[data-type="summary"]').click(); });
     $('#mini-sum-lib').on('click', () => { $('.sm-save-lib-btn[data-type="summary"]').click(); });
-    
     $('#mini-facts-gen').on('click', () => { $('.sm-generate-btn[data-type="facts"]').click(); });
     $('#mini-facts-split').on('click', () => { $('.sm-split-lib-btn').click(); });
     $('#mini-facts-lib').on('click', () => { $('.sm-save-lib-btn[data-type="facts"]').click(); });
-
     $('#mini-quest-gen').on('click', () => { $('#sm-btn-generate-quests').click(); });
     $('#mini-event-gen').on('click', () => { $('#sm-btn-generate-events').click(); });
+
+    $('#mini-sum-restore').on('click', () => restoreManual('summary'));
+    $('#mini-facts-restore').on('click', () => restoreManual('facts'));
 
     const restoreManual = (type) => {
         const context = SillyTavern.getContext();
         if (!context || !context.chat || context.chat.length === 0) return;
         const mem = context.chat[0].extra?.sunny_memories;
-        
         if (type === 'summary' && mem && mem.previousSummary !== undefined) {
             $('#mini-sum-area').val(mem.previousSummary);
             $('#sunny-memories-output-summary').val(mem.previousSummary).trigger('input').trigger('blur');
@@ -947,25 +832,16 @@ function createSunnyPopup() {
             $('#mini-facts-area').val(mem.previousFacts);
             $('#sunny-memories-output-facts').val(mem.previousFacts).trigger('input').trigger('blur');
             toastr.success("Facts restored locally.", "Sunny QuickPanel");
-        } else {
-            toastr.info("No previous data to restore.", "Sunny QuickPanel");
-        }
+        } else toastr.info("No previous data to restore.", "Sunny QuickPanel");
     };
 
     $('#mini-open-main').on('click', () => {
         toggleSunnyPopup(false);
-        
         $('#sm-main-btn-memories').click(); 
-        
         const drawer = $('#extensions_settings').closest('.drawer-content');
         const smSettings = $('#sunny_memories_settings');
-        
         if (drawer.length > 0 && smSettings.length > 0) {
-            drawer.animate({ 
-                scrollTop: smSettings.offset().top - drawer.offset().top + drawer.scrollTop() 
-            }, 300);
-        } else {
-            console.log('[ChatTracker] SunnyMemories settings are not rendered yet, scroll canceled.');
+            drawer.animate({ scrollTop: smSettings.offset().top - drawer.offset().top + drawer.scrollTop() }, 300);
         }
     });
 }
@@ -973,19 +849,13 @@ function createSunnyPopup() {
 function updateSunnyPopupData() {
     const context = SillyTavern.getContext();
     if (!context || !context.chat || context.chat.length === 0) return;
-    
     const mes = context.chat[0];
     const sm = mes.extra?.sunny_memories || {};
     
     const sumArea = document.getElementById('mini-sum-area');
     const factsArea = document.getElementById('mini-facts-area');
-
-    if (sumArea && document.activeElement !== sumArea) {
-        sumArea.value = sm.summary || "";
-    }
-    if (factsArea && document.activeElement !== factsArea) {
-        factsArea.value = sm.facts || "";
-    }
+    if (sumArea && document.activeElement !== sumArea) sumArea.value = sm.summary || "";
+    if (factsArea && document.activeElement !== factsArea) factsArea.value = sm.facts || "";
 
     const questEl = document.getElementById('mini-last-quest');
     const eventEl = document.getElementById('mini-last-event');
@@ -993,16 +863,12 @@ function updateSunnyPopupData() {
         let lastQuest = "None";
         if (sm.quests && sm.quests.length > 0) {
             const activeQuests = sm.quests.filter(q => q.status === 'current');
-            if (activeQuests.length > 0) {
-                lastQuest = activeQuests[activeQuests.length - 1].title;
-            } else {
-                lastQuest = sm.quests[sm.quests.length - 1].title;
-            }
+            if (activeQuests.length > 0) lastQuest = activeQuests[activeQuests.length - 1].title;
+            else lastQuest = sm.quests[sm.quests.length - 1].title;
         }
         let lastEvent = "None";
-        if (sm.calendar && sm.calendar.events && sm.calendar.events.length > 0) {
-            lastEvent = sm.calendar.events[sm.calendar.events.length - 1].description;
-        }
+        if (sm.calendar && sm.calendar.events && sm.calendar.events.length > 0) lastEvent = sm.calendar.events[sm.calendar.events.length - 1].description;
+        
         questEl.textContent = lastQuest.length > 40 ? lastQuest.substring(0, 40) + '...' : lastQuest;
         eventEl.textContent = lastEvent.length > 40 ? lastEvent.substring(0, 40) + '...' : lastEvent;
     }
@@ -1014,17 +880,12 @@ function toggleSunnyPopup(show) {
 
     if (show) {
         updateSunnyPopupData();
-
         if (!popup.style.left && !popup.style.top) {
             const panel = document.getElementById('chat-tracker-panel');
             const rect = panel.getBoundingClientRect();
-            popup.style.top = (rect.top + 50) + 'px'; 
-
-            if (rect.left > window.innerWidth / 2) {
-                popup.style.left = (rect.left - 360) + 'px'; 
-            } else {
-                popup.style.left = (rect.right + 10) + 'px';
-            }
+            popup.style.top = (rect.top) + 'px'; 
+            if (rect.left > window.innerWidth / 2) popup.style.left = (rect.left - 330) + 'px'; 
+            else popup.style.left = (rect.right + 10) + 'px';
         }
         popup.style.display = 'flex';
     } else {

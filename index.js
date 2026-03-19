@@ -43,6 +43,7 @@ function getChatIdentifier() {
 function saveApiUsage(usage) {
     try {
         const chatId = getChatIdentifier();
+        if (!chatId || chatId === 'default') return;
         localStorage.setItem('chatTracker_apiUsage_' + chatId, JSON.stringify(usage));
     } catch (e) {}
 }
@@ -146,9 +147,12 @@ async function handleFetchResponse(response, urlString) {
 
         const usage = extractUsage(data);
         if (usage) {
+            console.log("Usage captured:", usage);
             lastUsage = usage;
             saveApiUsage(lastUsage);
             updateContextDisplay('fetch:usage');
+        } else {
+            console.log("No usage found in response", data);
         }
     } catch (e) {
         debugLog('fetch:response handler error', e.message);

@@ -17,6 +17,8 @@ let tokenUiObserverRetries = 0;
 let lastVisibleMessageCount = -1;
 
 let maxTokens = 50000;
+let tokenMode = 'api';
+let lastUsage = { prompt: 0, completion: 0, total: 0 };
 
 const CHAT_TRACKER_DEBUG = false;
 
@@ -42,7 +44,9 @@ window.fetch = async (...args) => {
                 const context = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
                 if (context && typeof context.getTokenCount === 'function') {
                     const promptText = body.messages.map(m => m.content || '').join('\n');
-                    lastInterceptedTokenCount = context.getTokenCount(promptText);
+                    const estimatedPrompt = context.getTokenCount(promptText);
+                    lastUsage.prompt = estimatedPrompt;
+                    if (lastUsage.total === 0) lastUsage.total = estimatedPrompt;
                     updateContextDisplay('fetch:request');
                 }
             }
@@ -66,6 +70,28 @@ window.fetch = async (...args) => {
     return response;
 };
 
+function extractUsage(data) {
+    if (!data || typeof data !== 'object') return null;
+    let prompt = 0, completion = 0, total = 0;
+
+    if (data.usage) {
+        prompt = data.usage.prompt_tokens || 0;
+        completion = data.usage.completion_tokens || 0;
+        total = data.usage.total_tokens || 0;
+    } else {
+        prompt = data.prompt_tokens || data.prompt_token_count || data.prompttokencount || 0;
+        completion = data.completion_tokens || data.completion_token_count || 0;
+        total = data.total_tokens || data.totaltokens || data.token_count || data.tokencount || 0;
+    }
+
+    if (prompt > 0 || total > 0) {
+        if (total === 0) total = prompt + completion;
+        if (prompt === 0 && total > 0) prompt = total - completion;
+        return { prompt, completion, total };
+    }
+    return null;
+}
+
 async function handleFetchResponse(response, urlString) {
     try {
         const clone = response.clone();
@@ -87,14 +113,10 @@ async function handleFetchResponse(response, urlString) {
             return;
         }
 
-        const extracted = extractTokenCountFromObject(data);
-        if (typeof extracted === 'number' && extracted > 0) {
-            const prevTokenCount = lastInterceptedTokenCount;
-            lastInterceptedTokenCount = Math.round(extracted);
-
-            if (lastInterceptedTokenCount !== prevTokenCount) {
-                updateContextDisplay('fetch:response');
-            }
+        const usage = extractUsage(data);
+        if (usage) {
+            lastUsage = usage;
+            updateContextDisplay('fetch:usage');
         }
     } catch (e) {
         debugLog('fetch:response handler error', e.message);
@@ -103,8 +125,8 @@ async function handleFetchResponse(response, urlString) {
 
 jQuery(async function() {
     try {
-        createTrackerPanel();
         loadState();
+        createTrackerPanel();
         await waitForSillyTavernReady();
         debugLog('contextReady after wait:', contextReady);
         refreshAll('init');
@@ -219,7 +241,7 @@ function setupDraggable(el, handle) {
     };
 
     const onStart = (e) => {
-        if (e.target.closest('button, input, textarea, .tracker-popup-close, .edit-limit-btn, .sunny-tab-btn')) return;
+        if (e.target.closest('button, input, textarea, .tracker-popup-close, .edit-limit-btn, .sunny-tab-btn, .mode-btn')) return;
 
         isDragging = true;
         hasMoved = false;
@@ -306,7 +328,12 @@ function createTrackerPanel() {
                 <span class="context-text">0 / 0</span>
                 <span class="context-percent">(0%)</span>
             </div>
-            <button class="edit-limit-btn" id="edit-limit-btn" title="Edit token limit">✎</button>
+            <div class="mode-buttons-container">
+                <button class="mode-btn ${tokenMode === 'chat' ? 'active' : ''}" data-mode="chat" title="Visible chat history">CHAT</button>
+                <button class="mode-btn ${tokenMode === 'api' ? 'active' : ''}" data-mode="api" title="API Prompt tokens">API</button>
+                <button class="mode-btn ${tokenMode === 'total' ? 'active' : ''}" data-mode="total" title="API Total tokens">TOTAL</button>
+                <button class="edit-limit-btn" id="edit-limit-btn" title="Edit token limit">✎</button>
+            </div>
         `;
 
         content.appendChild(messagesDiv);
@@ -323,6 +350,23 @@ function createTrackerPanel() {
 
         const editLimitBtn = document.getElementById('edit-limit-btn');
         if (editLimitBtn) editLimitBtn.addEventListener('click', openLimitEditor);
+
+        const modeBtns = document.querySelectorAll('.mode-btn');
+        modeBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const newMode = btn.getAttribute('data-mode');
+                if (newMode) {
+                    tokenMode = newMode;
+                    localStorage.setItem('chatTrackerTokenMode', tokenMode);
+                    
+                    modeBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    
+                    updateContextDisplay('mode-switch');
+                }
+            });
+        });
 
         setupDraggable(panel);
     } catch (error) {}
@@ -419,6 +463,7 @@ function setupEventListeners() {
 
             if (resetIntercepted) {
                 lastInterceptedTokenCount = 0;
+                lastUsage = { prompt: 0, completion: 0, total: 0 };
                 setupTokenObservers();
             }
 
@@ -540,34 +585,18 @@ function updateHiddenCount() {
     } catch (error) {}
 }
 
-function parseTokenCountFromText(text) {
-    try {
-        if (!text) return null;
-        const normalized = String(text).replace(/\u00a0/g, ' ').trim();
-        const match = normalized.match(/(\d[\d,\s]*)(?:\.(\d+))?\s*([KkMm])?/);
-        if (!match) return null;
-
-        const intPart = match[1].replace(/[\s,]/g, '');
-        const fracPart = match[2] ? `.${match[2]}` : '';
-        const suffix = match[3]?.toLowerCase() ?? '';
-
-        let num = parseFloat(`${intPart}${fracPart}`);
-        if (!Number.isFinite(num)) return null;
-
-        if (suffix === 'k') num *= 1000;
-        if (suffix === 'm') num *= 1000000;
-
-        return Math.round(num);
-    } catch (e) {
-        return null;
-    }
-}
-
 function getTokenCountWithMethod() {
+    if (tokenMode === 'total') {
+        return { method: 'total', tokens: lastUsage.total || 0 };
+    }
+    if (tokenMode === 'api') {
+        return { method: 'api', tokens: lastUsage.prompt || 0 };
+    }
+    
     try {
         const context = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
         if (!context || !context.chat) {
-            return { method: 'none', tokens: 0 };
+            return { method: 'chat', tokens: 0 };
         }
 
         const visibleMessages = context.chat
@@ -576,77 +605,13 @@ function getTokenCountWithMethod() {
             .join("\n");
 
         if (!visibleMessages || visibleMessages.trim().length === 0) {
-            return { method: 'full-chat-calc', tokens: 0 };
+            return { method: 'chat', tokens: 0 };
         }
 
-        const totalChatTokens = context.getTokenCount(visibleMessages);
-
-        if (typeof totalChatTokens === 'number' && totalChatTokens > 0) {
-            return { method: 'full-chat-calc', tokens: totalChatTokens };
-        }
-
-        return { method: 'full-chat-calc', tokens: 0 };
+        const estimate = context.getTokenCount(visibleMessages);
+        return { method: 'chat', tokens: typeof estimate === 'number' ? estimate : 0 };
     } catch (e) {
         return { method: 'error', tokens: 0 };
-    }
-}
-
-function extractTokenCountFromObject(input) {
-    try {
-        const keyRank = new Map([
-            ['prompt_total_tokens', 0],['prompt_tokens', 1],['prompt_token_count', 1],['prompttokencount', 1],['token_count', 2],
-            ['tokencount', 2],
-            ['total_tokens', 3],['totaltokens', 3],
-        ]);
-
-        const visited = new Set();
-        const stack =[input];
-        const candidates =[];
-
-        while (stack.length > 0) {
-            const value = stack.pop();
-            if (!value || typeof value !== 'object') continue;
-            if (visited.has(value)) continue;
-            visited.add(value);
-
-            if (Array.isArray(value)) {
-                for (const item of value) stack.push(item);
-                continue;
-            }
-
-            for (const [key, child] of Object.entries(value)) {
-                const keyLower = String(key).toLowerCase();
-                const keyNoUnderscore = keyLower.replace(/_/g, '');
-
-                const directRank = keyRank.get(keyLower) ?? keyRank.get(keyNoUnderscore);
-                if (directRank !== undefined) {
-                    const tokens = typeof child === 'number' ? child : parseTokenCountFromText(child);
-                    if (typeof tokens === 'number' && Number.isFinite(tokens) && tokens > 0) {
-                        candidates.push({ tokens, rank: directRank });
-                    }
-                }
-
-                if (keyLower.includes('token') && !keyLower.includes('max') && !keyLower.includes('limit')) {
-                    const tokens = typeof child === 'number' ? child : parseTokenCountFromText(child);
-                    if (typeof tokens === 'number' && Number.isFinite(tokens) && tokens > 0) {
-                        candidates.push({ tokens, rank: 10 });
-                    }
-                }
-
-                if (child && typeof child === 'object') stack.push(child);
-            }
-        }
-
-        if (candidates.length === 0) return null;
-
-        candidates.sort((a, b) => {
-            if (a.rank !== b.rank) return a.rank - b.rank;
-            return b.tokens - a.tokens;
-        });
-
-        return candidates[0].tokens;
-    } catch (e) {
-        return null;
     }
 }
 
@@ -775,6 +740,10 @@ function loadMaxTokens() {
                 maxTokens = value;
             }
         }
+        const savedMode = localStorage.getItem('chatTrackerTokenMode');
+        if (savedMode === 'api' || savedMode === 'total' || savedMode === 'chat') {
+            tokenMode = savedMode;
+        }
     } catch (error) {}
 }
 
@@ -846,8 +815,8 @@ function loadState() {
                 }
             }
         }
-        loadMaxTokens();
     } catch (error) {}
+    loadMaxTokens();
 }
 
 function setupSunnyEvents() {

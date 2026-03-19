@@ -287,9 +287,10 @@ body.light-theme .mode-btn.active {
 .tracker-popup {
     position: fixed;
     z-index: 10001;
-    background: rgba(25, 25, 35, 0.95);
-    backdrop-filter: blur(15px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(25, 25, 35, 0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 10px;
     display: none;
     flex-direction: column;
@@ -344,12 +345,12 @@ body.light-theme .mode-btn.active {
 .sunny-tab-content textarea {
     width: 100%;
     min-height: 120px;
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(0, 0, 0, 0.2);
     color: #eee;
     border: 1px solid rgba(255,255,255,0.1);
     border-radius: 6px;
     padding: 8px;
-    font-size: 12px;
+    font-size: 11px;
     resize: vertical;
     outline: none;
     font-family: inherit;
@@ -410,7 +411,9 @@ body.light-theme .sunny-panel-tab.active {
     border-radius: 12px !important;
     border: 1px solid rgba(255, 170, 0, 0.2) !important;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8), 0 0 15px rgba(255, 170, 0, 0.05) !important;
-    background: rgba(20, 20, 25, 0.95) !important;
+    background: rgba(20, 20, 25, 0.7) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
 }
 
 body.light-theme .beautiful-popup {
@@ -425,8 +428,9 @@ body.light-theme .beautiful-popup {
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
 }
+
 .beautiful-title {
-    font-size: 13px;
+    font-size: 12px;
     letter-spacing: 1px;
     color: #fff;
     font-weight: bold;
@@ -445,12 +449,12 @@ body.light-theme .beautiful-title {
 }
 
 .beautiful-textarea {
-    background: rgba(0, 0, 0, 0.3) !important;
+    background: rgba(0, 0, 0, 0.2) !important; 
     border: 1px solid rgba(255, 255, 255, 0.08) !important;
     border-radius: 8px !important;
     padding: 12px !important;
     color: #e0e0e0 !important;
-    font-size: 13px !important;
+    font-size: 12px !important; 
     line-height: 1.4 !important;
     box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
     transition: border-color 0.2s, box-shadow 0.2s;
@@ -466,11 +470,9 @@ body.light-theme .beautiful-title {
     box-shadow: inset 0 2px 4px rgba(0,0,0,0.2), 0 0 8px rgba(255, 170, 0, 0.15) !important;
 }
 
-body.light-theme .beautiful-textarea {
-    background: rgba(255, 255, 255, 0.8) !important;
-    border: 1px solid rgba(0, 0, 0, 0.1) !important;
-    color: #111 !important;
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+body.light-theme .beautiful-popup {
+    background: rgba(255, 255, 255, 0.6) !important;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15), 0 0 15px rgba(255, 170, 0, 0.1) !important;
 }
 
 .beautiful-actions {

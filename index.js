@@ -31,6 +31,36 @@ function debugLog(...args) {
     } catch (e) {}
 }
 
+function getChatIdentifier() {
+    try {
+        const context = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
+        return context?.chatId || 'default';
+    } catch (e) {
+        return 'default';
+    }
+}
+
+function saveApiUsage(usage) {
+    try {
+        const chatId = getChatIdentifier();
+        localStorage.setItem('chatTracker_apiUsage_' + chatId, JSON.stringify(usage));
+    } catch (e) {}
+}
+
+function loadApiUsage() {
+    try {
+        const chatId = getChatIdentifier();
+        const saved = localStorage.getItem('chatTracker_apiUsage_' + chatId);
+        if (saved) {
+            lastUsage = JSON.parse(saved);
+        } else {
+            lastUsage = { prompt: 0, completion: 0, total: 0 };
+        }
+    } catch (e) {
+        lastUsage = { prompt: 0, completion: 0, total: 0 };
+    }
+}
+
 const originalFetch = window.fetch;
 
 window.fetch = async (...args) => {
@@ -117,6 +147,7 @@ async function handleFetchResponse(response, urlString) {
         const usage = extractUsage(data);
         if (usage) {
             lastUsage = usage;
+            saveApiUsage(lastUsage);
             updateContextDisplay('fetch:usage');
         }
     } catch (e) {
@@ -129,6 +160,7 @@ jQuery(async function() {
         loadState();
         createTrackerPanel();
         await waitForSillyTavernReady();
+        loadApiUsage();
         refreshAll('init');
         setupEventListeners();
         setupTokenObservers();
@@ -411,7 +443,7 @@ function setupEventListeners() {
             const { delayMs = 0, resetIntercepted = false } = opts;
             if (resetIntercepted) {
                 lastInterceptedTokenCount = 0;
-                lastUsage = { prompt: 0, completion: 0, total: 0 };
+                loadApiUsage();
                 setupTokenObservers();
             }
             if (delayMs > 0) {

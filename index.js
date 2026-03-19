@@ -32,7 +32,7 @@ function debugLog(...args) {
 const originalFetch = window.fetch;
 
 window.fetch = async (...args) => {
-    const [url, options] = args;
+    const[url, options] = args;
     const urlString = String(url);
     const isGenerateRequest = urlString.includes('/generate') || urlString.includes('/chat/completions');
 
@@ -46,7 +46,6 @@ window.fetch = async (...args) => {
                     const promptText = body.messages.map(m => m.content || '').join('\n');
                     const estimatedPrompt = context.getTokenCount(promptText);
                     lastUsage.prompt = estimatedPrompt;
-                    if (lastUsage.total === 0) lastUsage.total = estimatedPrompt;
                     updateContextDisplay('fetch:request');
                 }
             }
@@ -331,7 +330,6 @@ function createTrackerPanel() {
             <div class="mode-buttons-container">
                 <button class="mode-btn ${tokenMode === 'chat' ? 'active' : ''}" data-mode="chat" title="Visible chat history">CHAT</button>
                 <button class="mode-btn ${tokenMode === 'api' ? 'active' : ''}" data-mode="api" title="API Prompt tokens">API</button>
-                <button class="mode-btn ${tokenMode === 'total' ? 'active' : ''}" data-mode="total" title="API Total tokens">TOTAL</button>
                 <button class="edit-limit-btn" id="edit-limit-btn" title="Edit token limit">✎</button>
             </div>
         `;
@@ -586,9 +584,6 @@ function updateHiddenCount() {
 }
 
 function getTokenCountWithMethod() {
-    if (tokenMode === 'total') {
-        return { method: 'total', tokens: lastUsage.total || 0 };
-    }
     if (tokenMode === 'api') {
         return { method: 'api', tokens: lastUsage.prompt || 0 };
     }
@@ -741,7 +736,7 @@ function loadMaxTokens() {
             }
         }
         const savedMode = localStorage.getItem('chatTrackerTokenMode');
-        if (savedMode === 'api' || savedMode === 'total' || savedMode === 'chat') {
+        if (savedMode === 'api' || savedMode === 'chat') {
             tokenMode = savedMode;
         }
     } catch (error) {}

@@ -104,12 +104,17 @@ window.fetch = async (...args) => {
 
 function extractUsage(data) {
     if (!data || typeof data !== 'object') return null;
+
     let prompt = 0, completion = 0, total = 0;
 
     if (data.usage) {
         prompt = data.usage.prompt_tokens || 0;
         completion = data.usage.completion_tokens || 0;
         total = data.usage.total_tokens || 0;
+    } else if (data.usageMetadata) {
+        prompt = data.usageMetadata.promptTokenCount || 0;
+        completion = data.usageMetadata.candidatesTokenCount || 0;
+        total = data.usageMetadata.totalTokenCount || 0;
     } else {
         prompt = data.prompt_tokens || data.prompt_token_count || data.prompttokencount || 0;
         completion = data.completion_tokens || data.completion_token_count || 0;
@@ -121,6 +126,7 @@ function extractUsage(data) {
         if (prompt === 0 && total > 0) prompt = total - completion;
         return { prompt, completion, total };
     }
+
     return null;
 }
 
@@ -147,7 +153,7 @@ async function handleFetchResponse(response, urlString) {
 
         const usage = extractUsage(data);
         if (usage) {
-            console.log("Usage captured:", usage);
+            console.log('[ChatTracker] API usage:', usage, data);
             lastUsage = usage;
             saveApiUsage(lastUsage);
             updateContextDisplay('fetch:usage');
@@ -561,7 +567,7 @@ function updateHiddenCount() {
 
 function getTokenCountWithMethod() {
     if (tokenMode === 'api') {
-        return { method: 'api', tokens: lastUsage.prompt || 0 };
+        return { method: 'api', tokens: lastUsage.total || 0 };
     }
     try {
         const context = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;

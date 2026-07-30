@@ -1269,6 +1269,22 @@ function ensureCustomizationStyles() {
         body.light-theme .tracker-settings-action:hover {
             background: rgba(0, 0, 0, 0.1);
         }
+        #chat-tracker-popup-portal {
+            position: fixed !important;
+            inset: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            height: 100dvh !important;
+            z-index: 2147483646 !important;
+            pointer-events: none !important;
+            isolation: isolate;
+        }
+        #chat-tracker-popup-portal > .tracker-popup {
+            z-index: 1 !important;
+            pointer-events: auto !important;
+            visibility: visible !important;
+        }
+
         @media (max-width: 700px), (max-width: 1024px) and (pointer: coarse) {
             .chat-tracker-panel {
                 max-width: calc(100vw - 16px) !important;
@@ -1293,12 +1309,12 @@ function ensureCustomizationStyles() {
             }
             .tracker-settings-btn,
             .tracker-toggle {
-                width: max(38px, calc(28px * var(--tracker-scale))) !important;
-                height: max(38px, calc(28px * var(--tracker-scale))) !important;
-                min-width: 38px !important;
-                min-height: 38px !important;
-                padding: max(7px, calc(4px * var(--tracker-scale))) !important;
-                border-radius: 9px !important;
+                width: max(34px, calc(28px * var(--tracker-scale))) !important;
+                height: max(34px, calc(28px * var(--tracker-scale))) !important;
+                min-width: 34px !important;
+                min-height: 34px !important;
+                padding: max(5px, calc(4px * var(--tracker-scale))) !important;
+                border-radius: 8px !important;
             }
             .tracker-header-actions {
                 gap: 6px !important;
@@ -2375,12 +2391,25 @@ function positionPopupNearPanel(popup, width = 320) {
     popup.style.bottom = 'auto';
 }
 
+function getTrackerPopupPortal() {
+    let portal = document.getElementById('chat-tracker-popup-portal');
+    if (portal) return portal;
+
+    portal = document.createElement('div');
+    portal.id = 'chat-tracker-popup-portal';
+    portal.setAttribute('aria-live', 'polite');
+    (document.documentElement || document.body).appendChild(portal);
+    return portal;
+}
+
 function closeCustomizationPopup() {
     if (typeof customizationPopupCleanup === 'function') {
         customizationPopupCleanup();
         customizationPopupCleanup = null;
     }
     document.getElementById('tracker-customization-popup')?.remove();
+    const portal = document.getElementById('chat-tracker-popup-portal');
+    if (portal && portal.childElementCount === 0) portal.remove();
     const button = document.getElementById('tracker-settings-btn');
     if (button) button.setAttribute('aria-expanded', 'false');
 }
@@ -2458,8 +2487,14 @@ function openCustomizationPopup(event) {
         </div>
     `;
 
-    document.body.appendChild(popup);
-    popup.style.display = 'flex';
+    const portal = getTrackerPopupPortal();
+    portal.appendChild(popup);
+    popup.style.setProperty('display', 'flex', 'important');
+    popup.style.setProperty('position', 'fixed', 'important');
+    popup.style.setProperty('z-index', '1', 'important');
+    popup.style.setProperty('visibility', 'visible', 'important');
+    popup.style.setProperty('opacity', '1', 'important');
+    popup.style.setProperty('pointer-events', 'auto', 'important');
     positionPopupNearPanel(popup, 290);
     if (!isCompactMobileLayout()) {
         setupDraggable(popup, document.getElementById('tracker-customization-drag'));
@@ -2588,6 +2623,42 @@ function setupResponsiveTrackerHandlers() {
     });
 }
 
+function bindTrackerSettingsControl(button) {
+    if (!button || button.dataset.trackerSettingsReady === 'true') return;
+    button.dataset.trackerSettingsReady = 'true';
+
+    let directTouchAt = 0;
+
+    const activateFromTouch = (event) => {
+        if (event?.isPrimary === false) return;
+        if (event?.touches && event.touches.length > 1) return;
+        if (event?.cancelable) event.preventDefault();
+        event?.stopPropagation();
+        directTouchAt = Date.now();
+        openCustomizationPopup(event);
+    };
+
+    if ('PointerEvent' in window) {
+        button.addEventListener('pointerdown', (event) => {
+            if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+            activateFromTouch(event);
+        }, { passive: false });
+    } else {
+        button.addEventListener('touchstart', activateFromTouch, { passive: false });
+    }
+
+    button.addEventListener('click', (event) => {
+        // Ignore the synthetic click that some mobile browsers emit after the
+        // direct touch activation above. Mouse/keyboard clicks still work.
+        if (Date.now() - directTouchAt < 900) {
+            if (event.cancelable) event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+        openCustomizationPopup(event);
+    });
+}
+
 function createTrackerPanel() {
     try {
         if (document.getElementById('chat-tracker-panel')) return;
@@ -2668,7 +2739,7 @@ function createTrackerPanel() {
         const limitButton = document.getElementById('edit-limit-btn');
 
         toggleButton?.addEventListener('click', togglePanel);
-        settingsButton?.addEventListener('click', openCustomizationPopup);
+        bindTrackerSettingsControl(settingsButton);
         limitButton?.addEventListener('click', openLimitEditor);
 
         const modeBtns = document.querySelectorAll('.mode-btn');

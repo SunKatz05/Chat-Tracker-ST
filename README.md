@@ -1,6 +1,6 @@
 # Chat Tracker - SillyTavern Extension
 
-![Version](https://img.shields.io/badge/version-1.0.2-blue)
+![Version](https://img.shields.io/badge/version-1.1.0-blue)
 ![SillyTavern](https://img.shields.io/badge/SillyTavern-Extension-purple)
 
 A compact extension that allows you to track:
@@ -17,5 +17,9 @@ ___
 - Integration with my new extension https://github.com/SunKatz05/SunnyMemories now bonded
 - The quick access window has been updated, allowing to manage modes: summary, facts, quests & events
 ___
+# 1.1.0 Update
+- Added customization settings
+- Quick access window now also shows a library 
+
 Made by сунризе
 https://t.me/pinacoladaST

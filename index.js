@@ -1297,6 +1297,17 @@ function ensureCustomizationStyles() {
             }
             .tracker-header-actions {
                 gap: 6px !important;
+                position: relative;
+                z-index: 4;
+            }
+            .tracker-settings-btn,
+            .tracker-toggle,
+            .edit-limit-btn {
+                pointer-events: auto !important;
+                touch-action: manipulation !important;
+                -webkit-tap-highlight-color: transparent;
+                position: relative;
+                z-index: 5;
             }
             .tracker-popup {
                 max-width: calc(100vw - 16px) !important;
@@ -1304,6 +1315,9 @@ function ensureCustomizationStyles() {
             }
             .tracker-customization-popup {
                 position: fixed !important;
+                z-index: 2147483000 !important;
+                pointer-events: auto !important;
+                touch-action: pan-y !important;
                 left: max(8px, env(safe-area-inset-left)) !important;
                 right: max(8px, env(safe-area-inset-right)) !important;
                 top: auto !important;
@@ -2503,12 +2517,17 @@ function openCustomizationPopup(event) {
     };
 
     const attachOutsideListeners = () => {
-        document.addEventListener('mousedown', handleOutsideClose, true);
-        document.addEventListener('touchstart', handleOutsideClose, true);
+        if ('PointerEvent' in window) {
+            document.addEventListener('pointerdown', handleOutsideClose, true);
+        } else {
+            document.addEventListener('mousedown', handleOutsideClose, true);
+            document.addEventListener('touchstart', handleOutsideClose, true);
+        }
         document.addEventListener('keydown', handleEscapeClose);
     };
 
     customizationPopupCleanup = () => {
+        document.removeEventListener('pointerdown', handleOutsideClose, true);
         document.removeEventListener('mousedown', handleOutsideClose, true);
         document.removeEventListener('touchstart', handleOutsideClose, true);
         document.removeEventListener('keydown', handleEscapeClose);
@@ -2569,6 +2588,53 @@ function setupResponsiveTrackerHandlers() {
     window.visualViewport?.addEventListener('resize', () => handleViewportChange(false), { passive: true });
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') persistCurrentState();
+    });
+}
+
+
+function bindTrackerPressAction(element, handler) {
+    if (!element || typeof handler !== 'function' || element.dataset.trackerPressReady === 'true') return;
+    element.dataset.trackerPressReady = 'true';
+
+    let lastDirectActivation = 0;
+
+    const activate = (event) => {
+        if (event) {
+            if (event.cancelable) event.preventDefault();
+            event.stopPropagation();
+        }
+        lastDirectActivation = Date.now();
+        handler(event);
+    };
+
+    // Keep controls inside the draggable header out of the drag gesture from the
+    // very beginning. This is important for Android WebViews and older iOS builds.
+    const stopDragStart = (event) => {
+        event.stopPropagation();
+    };
+
+    if ('PointerEvent' in window) {
+        element.addEventListener('pointerdown', stopDragStart, { passive: true });
+        element.addEventListener('pointerup', (event) => {
+            if (event.pointerType === 'mouse') return;
+            if (event.isPrimary === false) return;
+            activate(event);
+        }, { passive: false });
+    } else {
+        element.addEventListener('touchstart', stopDragStart, { passive: true });
+        element.addEventListener('touchend', (event) => activate(event), { passive: false });
+        element.addEventListener('mousedown', stopDragStart);
+    }
+
+    element.addEventListener('click', (event) => {
+        // A touch/pointer activation is commonly followed by a synthetic click.
+        // Ignore that second event so the popup is not immediately toggled closed.
+        if (Date.now() - lastDirectActivation < 700) {
+            if (event.cancelable) event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+        activate(event);
     });
 }
 
@@ -2647,9 +2713,9 @@ function createTrackerPanel() {
         panel.appendChild(content);
         document.body.appendChild(panel);
 
-        document.getElementById('tracker-toggle')?.addEventListener('click', togglePanel);
-        document.getElementById('tracker-settings-btn')?.addEventListener('click', openCustomizationPopup);
-        document.getElementById('edit-limit-btn')?.addEventListener('click', openLimitEditor);
+        bindTrackerPressAction(document.getElementById('tracker-toggle'), togglePanel);
+        bindTrackerPressAction(document.getElementById('tracker-settings-btn'), openCustomizationPopup);
+        bindTrackerPressAction(document.getElementById('edit-limit-btn'), openLimitEditor);
 
         const modeBtns = document.querySelectorAll('.mode-btn');
         modeBtns.forEach(btn => {

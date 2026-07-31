@@ -2508,7 +2508,7 @@ function openCustomizationPopup(event) {
     portal.appendChild(popup);
     popup.style.setProperty('display', 'flex', 'important');
     popup.style.setProperty('position', 'fixed', 'important');
-    popup.style.setProperty('z-index', '1', 'important');
+    popup.style.setProperty('z-index', '2147483647', 'important');
     popup.style.setProperty('visibility', 'visible', 'important');
     popup.style.setProperty('opacity', '1', 'important');
     popup.style.setProperty('pointer-events', 'auto', 'important');

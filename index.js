@@ -1274,6 +1274,7 @@ function ensureCustomizationStyles() {
             inset: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
+            height: 100vh !important;
             height: 100dvh !important;
             z-index: 2147483646 !important;
             pointer-events: none !important;
@@ -1288,6 +1289,7 @@ function ensureCustomizationStyles() {
         @media (max-width: 700px), (max-width: 1024px) and (pointer: coarse) {
             .chat-tracker-panel {
                 max-width: calc(100vw - 16px) !important;
+                max-height: calc(100vh - 16px);
                 max-height: calc(100dvh - 16px);
                 touch-action: auto !important;
             }
@@ -1301,6 +1303,7 @@ function ensureCustomizationStyles() {
                 user-select: none;
             }
             .chat-tracker-panel:not(.collapsed) .tracker-content {
+                max-height: calc(100vh - 76px) !important;
                 max-height: calc(100dvh - 76px) !important;
                 overflow-y: auto;
                 overscroll-behavior: contain;
@@ -1323,7 +1326,9 @@ function ensureCustomizationStyles() {
             }
             .tracker-settings-btn,
             .tracker-toggle,
-            .edit-limit-btn {
+            .edit-limit-btn,
+            .tracker-btn-create,
+            .sunny-panel-tab {
                 pointer-events: auto !important;
                 touch-action: manipulation !important;
                 -webkit-tap-highlight-color: transparent;
@@ -1332,6 +1337,7 @@ function ensureCustomizationStyles() {
             }
             .tracker-popup {
                 max-width: calc(100vw - 16px) !important;
+                max-height: calc(100vh - 16px) !important;
                 max-height: calc(100dvh - 16px) !important;
             }
             .tracker-customization-popup {
@@ -2398,7 +2404,7 @@ function getTrackerPopupPortal() {
     portal = document.createElement('div');
     portal.id = 'chat-tracker-popup-portal';
     portal.setAttribute('aria-live', 'polite');
-    (document.documentElement || document.body).appendChild(portal);
+    (document.body || document.documentElement).appendChild(portal);
     return portal;
 }
 
@@ -2623,40 +2629,76 @@ function setupResponsiveTrackerHandlers() {
     });
 }
 
-function bindTrackerSettingsControl(button) {
-    if (!button || button.dataset.trackerSettingsReady === 'true') return;
-    button.dataset.trackerSettingsReady = 'true';
+function bindReliableTrackerTap(element, handler, readyKey = 'trackerTapReady') {
+    if (!element || element.dataset[readyKey] === 'true') return;
+    element.dataset[readyKey] = 'true';
 
-    let directTouchAt = 0;
+    let touchHandledAt = 0;
+    let startX = 0;
+    let startY = 0;
+    let activePointerId = null;
 
-    const activateFromTouch = (event) => {
-        if (event?.isPrimary === false) return;
-        if (event?.touches && event.touches.length > 1) return;
+    const activate = (event) => {
         if (event?.cancelable) event.preventDefault();
         event?.stopPropagation();
-        directTouchAt = Date.now();
-        openCustomizationPopup(event);
+        touchHandledAt = Date.now();
+        handler(event);
     };
 
     if ('PointerEvent' in window) {
-        button.addEventListener('pointerdown', (event) => {
+        element.addEventListener('pointerdown', (event) => {
             if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
-            activateFromTouch(event);
+            if (event.isPrimary === false) return;
+            activePointerId = event.pointerId;
+            startX = event.clientX;
+            startY = event.clientY;
+        }, { passive: true });
+
+        element.addEventListener('pointerup', (event) => {
+            if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+            if (activePointerId !== null && event.pointerId !== activePointerId) return;
+            activePointerId = null;
+            if (Math.hypot(event.clientX - startX, event.clientY - startY) > 14) return;
+            activate(event);
         }, { passive: false });
+
+        element.addEventListener('pointercancel', () => {
+            activePointerId = null;
+        }, { passive: true });
     } else {
-        button.addEventListener('touchstart', activateFromTouch, { passive: false });
+        let touchId = null;
+        element.addEventListener('touchstart', (event) => {
+            if (event.touches.length !== 1) return;
+            const touch = event.touches[0];
+            touchId = touch.identifier;
+            startX = touch.clientX;
+            startY = touch.clientY;
+        }, { passive: true });
+
+        element.addEventListener('touchend', (event) => {
+            const touch = Array.from(event.changedTouches || []).find(item => item.identifier === touchId);
+            touchId = null;
+            if (!touch || Math.hypot(touch.clientX - startX, touch.clientY - startY) > 14) return;
+            activate(event);
+        }, { passive: false });
+
+        element.addEventListener('touchcancel', () => {
+            touchId = null;
+        }, { passive: true });
     }
 
-    button.addEventListener('click', (event) => {
-        // Ignore the synthetic click that some mobile browsers emit after the
-        // direct touch activation above. Mouse/keyboard clicks still work.
-        if (Date.now() - directTouchAt < 900) {
+    element.addEventListener('click', (event) => {
+        if (Date.now() - touchHandledAt < 900) {
             if (event.cancelable) event.preventDefault();
             event.stopPropagation();
             return;
         }
-        openCustomizationPopup(event);
+        handler(event);
     });
+}
+
+function bindTrackerSettingsControl(button) {
+    bindReliableTrackerTap(button, openCustomizationPopup, 'trackerSettingsReady');
 }
 
 function createTrackerPanel() {
@@ -2738,9 +2780,9 @@ function createTrackerPanel() {
         const settingsButton = document.getElementById('tracker-settings-btn');
         const limitButton = document.getElementById('edit-limit-btn');
 
-        toggleButton?.addEventListener('click', togglePanel);
+        bindReliableTrackerTap(toggleButton, togglePanel, 'trackerToggleReady');
         bindTrackerSettingsControl(settingsButton);
-        limitButton?.addEventListener('click', openLimitEditor);
+        bindReliableTrackerTap(limitButton, openLimitEditor, 'trackerLimitReady');
 
         const modeBtns = document.querySelectorAll('.mode-btn');
         modeBtns.forEach(btn => {
@@ -3030,8 +3072,12 @@ function openLimitEditor(event) {
         </div>
     `;
 
-    document.body.appendChild(popup);
-    popup.style.display = 'flex';
+    getTrackerPopupPortal().appendChild(popup);
+    popup.style.setProperty('display', 'flex', 'important');
+    popup.style.setProperty('position', 'fixed', 'important');
+    popup.style.setProperty('visibility', 'visible', 'important');
+    popup.style.setProperty('opacity', '1', 'important');
+    popup.style.setProperty('pointer-events', 'auto', 'important');
     positionPopupNearPanel(popup, 300);
 
     const input = document.getElementById('limit-input');
@@ -3184,8 +3230,10 @@ function applySavedPanelState() {
 }
 
 function setupSunnyEvents() {
-    $(document).on('click', '#trigger-sunny-panel', function(e) {
-        e.stopPropagation();
+    let lastSunnyTouchAt = 0;
+
+    const activateSunnyToggle = (element, event) => {
+        event?.stopPropagation?.();
         if (!window.extension_settings?.SunnyMemories) {
             toastr.warning(trackerText('sunnyRequired'), trackerText('sunnyPanelName'));
             return;
@@ -3193,23 +3241,51 @@ function setupSunnyEvents() {
         isSunnyMode = !isSunnyMode;
         document.getElementById('stat-context-container').style.display = isSunnyMode ? 'none' : 'flex';
         document.getElementById('sunny-panel-tabs').style.display = isSunnyMode ? 'flex' : 'none';
-        this.style.color = isSunnyMode ? '#ffcc00' : '';
-        this.style.textShadow = isSunnyMode ? '0 0 8px rgba(255, 204, 0, 0.6)' : '';
-
+        element.style.color = isSunnyMode ? '#ffcc00' : '';
+        element.style.textShadow = isSunnyMode ? '0 0 8px rgba(255, 204, 0, 0.6)' : '';
         if (!isSunnyMode) toggleSunnyPopup(false);
-    });
+    };
 
-    $(document).on('click', '.sunny-panel-tab', function(e) {
-        e.stopPropagation();
+    const activateSunnyTab = (element, event) => {
+        event?.stopPropagation?.();
         $('.sunny-panel-tab').removeClass('active');
-        $(this).addClass('active');
+        $(element).addClass('active');
 
-        const target = $(this).data('tab');
+        const target = $(element).data('tab');
         $('#sunny-popup-title-text').text(getSunnyTabTitle(target));
         $('.sunny-tab-content').removeClass('active');
         $('#sunny-tab-' + target).addClass('active');
-
         toggleSunnyPopup(true);
+    };
+
+    document.addEventListener('touchend', (event) => {
+        const target = event.target instanceof Element
+            ? event.target.closest('#trigger-sunny-panel, .sunny-panel-tab')
+            : null;
+        if (!target) return;
+        if (event.cancelable) event.preventDefault();
+        event.stopPropagation();
+        lastSunnyTouchAt = Date.now();
+        if (target.matches('#trigger-sunny-panel')) activateSunnyToggle(target, event);
+        else activateSunnyTab(target, event);
+    }, { passive: false });
+
+    $(document).on('click', '#trigger-sunny-panel', function(e) {
+        if (Date.now() - lastSunnyTouchAt < 900) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
+        activateSunnyToggle(this, e);
+    });
+
+    $(document).on('click', '.sunny-panel-tab', function(e) {
+        if (Date.now() - lastSunnyTouchAt < 900) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
+        activateSunnyTab(this, e);
     });
 
     createSunnyPopup();
@@ -3839,7 +3915,9 @@ function createSunnyPopup() {
         </div>
     `;
 
-    document.body.appendChild(popup);
+    getTrackerPopupPortal().appendChild(popup);
+    popup.style.setProperty('position', 'fixed', 'important');
+    popup.style.setProperty('pointer-events', 'auto', 'important');
     if (!isCompactMobileLayout()) {
         setupDraggable(popup, document.getElementById('tracker-sunny-drag'));
     }
@@ -3957,7 +4035,11 @@ function toggleSunnyPopup(show) {
     if (!popup) return;
 
     if (show) {
-        popup.style.display = 'flex';
+        popup.style.setProperty('display', 'flex', 'important');
+        popup.style.setProperty('position', 'fixed', 'important');
+        popup.style.setProperty('visibility', 'visible', 'important');
+        popup.style.setProperty('opacity', '1', 'important');
+        popup.style.setProperty('pointer-events', 'auto', 'important');
         miniSunnyLastBridgeSignature = '';
         miniSunnyLastLibraryRenderSignature = '';
         refreshSunnyPopupIfChanged({ force: true });
@@ -3967,7 +4049,7 @@ function toggleSunnyPopup(show) {
         startMiniSunnyBridgeObserver();
         startMiniSunnySyncInterval();
     } else {
-        popup.style.display = 'none';
+        popup.style.setProperty('display', 'none', 'important');
         miniSunnyActionWatchId += 1;
         clearMiniSunnyRefreshTimers();
         stopMiniSunnySyncInterval();

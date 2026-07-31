@@ -684,10 +684,7 @@ jQuery(async function() {
         setInterval(() => {
             refreshAll('timer');
         }, 2500);
-    } catch (error) {
-        console.error('[ChatTracker] Initialization failed', error);
-        try { toastr?.error?.(String(error?.message || error), 'Chat Tracker'); } catch (toastError) {}
-    }
+    } catch (error) {}
 });
 
 function waitForSillyTavernReady() {
@@ -737,57 +734,6 @@ function isCompactMobileLayout() {
     } catch (error) {
         return getViewportBounds().width <= 700;
     }
-}
-
-function isTouchLikeDevice() {
-    try {
-        return Number(navigator.maxTouchPoints || 0) > 0
-            || Number(navigator.msMaxTouchPoints || 0) > 0
-            || 'ontouchstart' in window;
-    } catch (error) {
-        return false;
-    }
-}
-
-function ensureTrackerMobileCompatibilityStyles() {
-    const root = document.documentElement;
-    if (isTouchLikeDevice()) root?.classList.add('chat-tracker-touch-device');
-    if (document.getElementById('chat-tracker-mobile-compat-styles')) return;
-
-    const style = document.createElement('style');
-    style.id = 'chat-tracker-mobile-compat-styles';
-    style.textContent = `
-        html.chat-tracker-touch-device .chat-tracker-panel,
-        html.chat-tracker-touch-device .chat-tracker-panel .tracker-header {
-            touch-action: auto !important;
-        }
-        html.chat-tracker-touch-device .tracker-settings-btn,
-        html.chat-tracker-touch-device .tracker-toggle,
-        html.chat-tracker-touch-device .edit-limit-btn,
-        html.chat-tracker-touch-device #trigger-sunny-panel,
-        html.chat-tracker-touch-device .sunny-panel-tab,
-        html.chat-tracker-touch-device .mode-btn,
-        html.chat-tracker-touch-device .tracker-popup-close,
-        html.chat-tracker-touch-device .tracker-settings-action,
-        html.chat-tracker-touch-device .tracker-dialog-btn,
-        html.chat-tracker-touch-device .beautiful-btn,
-        html.chat-tracker-touch-device .sunny-library-filter {
-            pointer-events: auto !important;
-            touch-action: manipulation !important;
-            -webkit-tap-highlight-color: transparent !important;
-        }
-        html.chat-tracker-touch-device .tracker-popup {
-            position: fixed !important;
-            z-index: 2147483000 !important;
-            pointer-events: auto !important;
-            visibility: visible;
-            transform: none !important;
-            animation: none !important;
-            -webkit-backdrop-filter: none !important;
-            backdrop-filter: none !important;
-        }
-    `;
-    document.head.appendChild(style);
 }
 
 function clampElementToViewport(el, preferredAnchor = null) {
@@ -1323,6 +1269,22 @@ function ensureCustomizationStyles() {
         body.light-theme .tracker-settings-action:hover {
             background: rgba(0, 0, 0, 0.1);
         }
+        #chat-tracker-popup-portal {
+            position: fixed !important;
+            inset: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            height: 100dvh !important;
+            z-index: 2147483646 !important;
+            pointer-events: none !important;
+            isolation: isolate;
+        }
+        #chat-tracker-popup-portal > .tracker-popup {
+            z-index: 1 !important;
+            pointer-events: auto !important;
+            visibility: visible !important;
+        }
+
         @media (max-width: 700px), (max-width: 1024px) and (pointer: coarse) {
             .chat-tracker-panel {
                 max-width: calc(100vw - 16px) !important;
@@ -1331,7 +1293,12 @@ function ensureCustomizationStyles() {
             }
             .chat-tracker-panel .tracker-header,
             .chat-tracker-panel.collapsed {
+                touch-action: manipulation !important;
+            }
+            .chat-tracker-panel .tracker-icon {
                 touch-action: none !important;
+                -webkit-user-select: none;
+                user-select: none;
             }
             .chat-tracker-panel:not(.collapsed) .tracker-content {
                 max-height: calc(100dvh - 76px) !important;
@@ -1342,12 +1309,12 @@ function ensureCustomizationStyles() {
             }
             .tracker-settings-btn,
             .tracker-toggle {
-                width: max(38px, calc(28px * var(--tracker-scale))) !important;
-                height: max(38px, calc(28px * var(--tracker-scale))) !important;
-                min-width: 38px !important;
-                min-height: 38px !important;
-                padding: max(7px, calc(4px * var(--tracker-scale))) !important;
-                border-radius: 9px !important;
+                width: max(34px, calc(28px * var(--tracker-scale))) !important;
+                height: max(34px, calc(28px * var(--tracker-scale))) !important;
+                min-width: 34px !important;
+                min-height: 34px !important;
+                padding: max(5px, calc(4px * var(--tracker-scale))) !important;
+                border-radius: 8px !important;
             }
             .tracker-header-actions {
                 gap: 6px !important;
@@ -1369,9 +1336,6 @@ function ensureCustomizationStyles() {
             }
             .tracker-customization-popup {
                 position: fixed !important;
-                z-index: 2147483000 !important;
-                pointer-events: auto !important;
-                touch-action: pan-y !important;
                 left: max(8px, env(safe-area-inset-left)) !important;
                 right: max(8px, env(safe-area-inset-right)) !important;
                 top: auto !important;
@@ -2404,34 +2368,16 @@ function applyTrackerCustomization() {
 
 function positionPopupNearPanel(popup, width = 320) {
     const panel = document.getElementById('chat-tracker-panel');
-    if (!popup) return;
+    if (!panel || !popup) return;
 
-    const touchLayout = isTouchLikeDevice() || isCompactMobileLayout();
-    if (touchLayout) {
-        const viewport = window.visualViewport;
-        const viewportWidth = Math.max(1, Math.round(viewport?.width || document.documentElement?.clientWidth || window.innerWidth || 1));
-        const viewportHeight = Math.max(1, Math.round(viewport?.height || document.documentElement?.clientHeight || window.innerHeight || 1));
-        const offsetLeft = Math.round(viewport?.offsetLeft || 0);
-        const offsetTop = Math.round(viewport?.offsetTop || 0);
-        const margin = 8;
-        const availableWidth = Math.max(160, viewportWidth - margin * 2);
-        const availableHeight = Math.max(120, viewportHeight - margin * 2);
-        const popupWidth = Math.min(availableWidth, Math.max(240, Math.round(width)));
-        const popupLeft = offsetLeft + Math.max(margin, Math.round((viewportWidth - popupWidth) / 2));
-
-        // Use literal pixel values with inline !important. Older Android WebViews
-        // can ignore max()/env()/dvh declarations used by modern mobile CSS.
-        popup.style.setProperty('left', `${popupLeft}px`, 'important');
-        popup.style.setProperty('right', 'auto', 'important');
-        popup.style.setProperty('top', `${offsetTop + margin}px`, 'important');
-        popup.style.setProperty('bottom', 'auto', 'important');
-        popup.style.setProperty('width', `${popupWidth}px`, 'important');
-        popup.style.setProperty('max-width', `${popupWidth}px`, 'important');
-        popup.style.setProperty('max-height', `${availableHeight}px`, 'important');
+    if (isCompactMobileLayout()) {
+        popup.style.left = '8px';
+        popup.style.right = '8px';
+        popup.style.top = 'auto';
+        popup.style.bottom = '8px';
         return;
     }
 
-    if (!panel) return;
     const viewport = getViewportBounds();
     const rect = panel.getBoundingClientRect();
     const gap = 10;
@@ -2439,60 +2385,21 @@ function positionPopupNearPanel(popup, width = 320) {
     const left = rect.left > viewport.width / 2
         ? Math.max(8, rect.left - width - gap)
         : Math.min(viewport.width - width - 8, rect.right + gap);
-    popup.style.setProperty('top', `${top}px`, 'important');
-    popup.style.setProperty('left', `${Math.max(8, left)}px`, 'important');
-    popup.style.setProperty('right', 'auto', 'important');
-    popup.style.setProperty('bottom', 'auto', 'important');
+    popup.style.top = `${top}px`;
+    popup.style.left = `${Math.max(8, left)}px`;
+    popup.style.right = 'auto';
+    popup.style.bottom = 'auto';
 }
 
-function verifyTrackerPopupVisibility(popup, width = 320) {
-    if (!popup?.isConnected) return;
-    requestAnimationFrame(() => {
-        if (!popup?.isConnected) return;
-        const style = getComputedStyle(popup);
-        const rect = popup.getBoundingClientRect();
-        const invisible = style.display === 'none'
-            || style.visibility === 'hidden'
-            || Number(style.opacity) <= 0
-            || rect.width < 20
-            || rect.height < 20
-            || rect.right <= 0
-            || rect.bottom <= 0;
-        if (!invisible) return;
+function getTrackerPopupPortal() {
+    let portal = document.getElementById('chat-tracker-popup-portal');
+    if (portal) return portal;
 
-        console.warn('[ChatTracker] Popup visibility fallback applied', popup.id, { style: style.display, rect });
-        popup.style.setProperty('display', 'flex', 'important');
-        popup.style.setProperty('visibility', 'visible', 'important');
-        popup.style.setProperty('opacity', '1', 'important');
-        popup.style.setProperty('position', 'fixed', 'important');
-        popup.style.setProperty('z-index', '2147483646', 'important');
-        popup.style.setProperty('transform', 'none', 'important');
-        positionPopupNearPanel(popup, width);
-    });
-}
-
-function showTrackerPopup(popup, width = 320) {
-    if (!popup?.isConnected) return;
-
-    popup.style.setProperty('display', 'flex', 'important');
-    popup.style.setProperty('position', 'fixed', 'important');
-    popup.style.setProperty('z-index', '2147483000', 'important');
-    popup.style.setProperty('pointer-events', 'auto', 'important');
-    popup.style.setProperty('visibility', 'visible', 'important');
-    popup.style.setProperty('opacity', '1', 'important');
-    popup.style.setProperty('transform', 'none', 'important');
-    popup.style.setProperty('flex-direction', 'column', 'important');
-
-    if (isTouchLikeDevice()) {
-        // Avoid mobile GPU-compositing bugs caused by nested blur/filter layers.
-        popup.style.setProperty('background', 'rgba(25, 25, 35, 0.985)', 'important');
-        popup.style.setProperty('-webkit-backdrop-filter', 'none', 'important');
-        popup.style.setProperty('backdrop-filter', 'none', 'important');
-        popup.style.setProperty('overflow', 'hidden auto', 'important');
-    }
-
-    positionPopupNearPanel(popup, width);
-    verifyTrackerPopupVisibility(popup, width);
+    portal = document.createElement('div');
+    portal.id = 'chat-tracker-popup-portal';
+    portal.setAttribute('aria-live', 'polite');
+    (document.documentElement || document.body).appendChild(portal);
+    return portal;
 }
 
 function closeCustomizationPopup() {
@@ -2501,6 +2408,8 @@ function closeCustomizationPopup() {
         customizationPopupCleanup = null;
     }
     document.getElementById('tracker-customization-popup')?.remove();
+    const portal = document.getElementById('chat-tracker-popup-portal');
+    if (portal && portal.childElementCount === 0) portal.remove();
     const button = document.getElementById('tracker-settings-btn');
     if (button) button.setAttribute('aria-expanded', 'false');
 }
@@ -2515,14 +2424,13 @@ function updateTrackerRangeVisual(input) {
 }
 
 function openCustomizationPopup(event) {
-    if (event) event.stopPropagation();
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
 
     const existing = document.getElementById('tracker-customization-popup');
     if (existing) {
-        if (getComputedStyle(existing).display === 'none' || getComputedStyle(existing).visibility === 'hidden') {
-            showTrackerPopup(existing, 290);
-            return;
-        }
         closeCustomizationPopup();
         return;
     }
@@ -2573,15 +2481,22 @@ function openCustomizationPopup(event) {
                 </div>
             </div>
             <div class="tracker-settings-actions">
-                <button type="button" class="tracker-settings-action" id="tracker-settings-reset">${trackerText('reset')}</button>
-                <button type="button" class="tracker-settings-action" id="tracker-settings-done">${trackerText('done')}</button>
+                <button class="tracker-settings-action" id="tracker-settings-reset">${trackerText('reset')}</button>
+                <button class="tracker-settings-action" id="tracker-settings-done">${trackerText('done')}</button>
             </div>
         </div>
     `;
 
-    document.body.appendChild(popup);
-    showTrackerPopup(popup, 290);
-    if (!isTouchLikeDevice()) {
+    const portal = getTrackerPopupPortal();
+    portal.appendChild(popup);
+    popup.style.setProperty('display', 'flex', 'important');
+    popup.style.setProperty('position', 'fixed', 'important');
+    popup.style.setProperty('z-index', '1', 'important');
+    popup.style.setProperty('visibility', 'visible', 'important');
+    popup.style.setProperty('opacity', '1', 'important');
+    popup.style.setProperty('pointer-events', 'auto', 'important');
+    positionPopupNearPanel(popup, 290);
+    if (!isCompactMobileLayout()) {
         setupDraggable(popup, document.getElementById('tracker-customization-drag'));
     }
 
@@ -2639,17 +2554,12 @@ function openCustomizationPopup(event) {
     };
 
     const attachOutsideListeners = () => {
-        if ('PointerEvent' in window) {
-            document.addEventListener('pointerdown', handleOutsideClose, true);
-        } else {
-            document.addEventListener('mousedown', handleOutsideClose, true);
-            document.addEventListener('touchstart', handleOutsideClose, true);
-        }
+        document.addEventListener('mousedown', handleOutsideClose, true);
+        document.addEventListener('touchstart', handleOutsideClose, true);
         document.addEventListener('keydown', handleEscapeClose);
     };
 
     customizationPopupCleanup = () => {
-        document.removeEventListener('pointerdown', handleOutsideClose, true);
         document.removeEventListener('mousedown', handleOutsideClose, true);
         document.removeEventListener('touchstart', handleOutsideClose, true);
         document.removeEventListener('keydown', handleEscapeClose);
@@ -2713,82 +2623,39 @@ function setupResponsiveTrackerHandlers() {
     });
 }
 
+function bindTrackerSettingsControl(button) {
+    if (!button || button.dataset.trackerSettingsReady === 'true') return;
+    button.dataset.trackerSettingsReady = 'true';
 
-function bindTrackerPressAction(element, handler) {
-    if (!element || typeof handler !== 'function' || element.dataset.trackerPressReady === 'true') return;
-    element.dataset.trackerPressReady = 'true';
+    let directTouchAt = 0;
 
-    let lastActivation = 0;
-    let touchStart = null;
-    let pointerStart = null;
-
-    const activate = (event) => {
-        const now = Date.now();
-        if (now - lastActivation < 700) return;
-        lastActivation = now;
-        try {
-            event?.stopPropagation?.();
-            handler.call(element, event);
-        } catch (error) {
-            console.error('[ChatTracker] Control activation failed', element.id || element.className, error);
-            try { toastr?.error?.(String(error?.message || error), 'Chat Tracker'); } catch (toastError) {}
-        }
+    const activateFromTouch = (event) => {
+        if (event?.isPrimary === false) return;
+        if (event?.touches && event.touches.length > 1) return;
+        if (event?.cancelable) event.preventDefault();
+        event?.stopPropagation();
+        directTouchAt = Date.now();
+        openCustomizationPopup(event);
     };
 
-    // This is the same primary path used by the older working build.
-    element.addEventListener('click', activate);
-
-    // Some Android WebViews lose the synthetic click when a control lives inside
-    // a draggable/touch-action container. The fallback never prevents the native
-    // event, and deduplication absorbs the later click if it does arrive.
-    element.addEventListener('touchstart', (event) => {
-        const touch = event.touches?.[0];
-        if (!touch) return;
-        touchStart = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-    }, { passive: true });
-    element.addEventListener('touchend', (event) => {
-        const touch = event.changedTouches?.[0];
-        if (!touch || !touchStart) return;
-        const moved = Math.hypot(touch.clientX - touchStart.x, touch.clientY - touchStart.y);
-        const elapsed = Date.now() - touchStart.time;
-        touchStart = null;
-        if (moved <= 14 && elapsed < 1200) setTimeout(() => activate(event), 40);
-    }, { passive: true });
-    element.addEventListener('touchcancel', () => { touchStart = null; }, { passive: true });
-
     if ('PointerEvent' in window) {
-        element.addEventListener('pointerdown', (event) => {
+        button.addEventListener('pointerdown', (event) => {
             if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
-            pointerStart = { id: event.pointerId, x: event.clientX, y: event.clientY, time: Date.now() };
-        }, { passive: true });
-        element.addEventListener('pointerup', (event) => {
-            if (!pointerStart || event.pointerId !== pointerStart.id) return;
-            const moved = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
-            const elapsed = Date.now() - pointerStart.time;
-            pointerStart = null;
-            if (moved <= 14 && elapsed < 1200) setTimeout(() => activate(event), 40);
-        }, { passive: true });
-        element.addEventListener('pointercancel', () => { pointerStart = null; }, { passive: true });
+            activateFromTouch(event);
+        }, { passive: false });
+    } else {
+        button.addEventListener('touchstart', activateFromTouch, { passive: false });
     }
-}
 
-function bindDelegatedTrackerPressAction(selector, handler) {
-    // Kept for compatibility with third-party code, but uses native click as the
-    // primary path instead of document-wide pointerup interception.
-    const activationTimes = new WeakMap();
-    document.addEventListener('click', (event) => {
-        const target = event.target;
-        const element = target && typeof target.closest === 'function' ? target.closest(selector) : null;
-        if (!element) return;
-        const now = Date.now();
-        if (now - (activationTimes.get(element) || 0) < 700) return;
-        activationTimes.set(element, now);
-        try {
+    button.addEventListener('click', (event) => {
+        // Ignore the synthetic click that some mobile browsers emit after the
+        // direct touch activation above. Mouse/keyboard clicks still work.
+        if (Date.now() - directTouchAt < 900) {
+            if (event.cancelable) event.preventDefault();
             event.stopPropagation();
-            handler.call(element, event);
-        } catch (error) {
-            console.error('[ChatTracker] Delegated control activation failed', selector, error);
+            return;
         }
+        openCustomizationPopup(event);
     });
 }
 
@@ -2797,12 +2664,10 @@ function createTrackerPanel() {
         if (document.getElementById('chat-tracker-panel')) return;
         ensureCustomizationStyles();
         ensureTrackerV7Styles();
-        ensureTrackerMobileCompatibilityStyles();
 
         const panel = document.createElement('div');
         panel.id = 'chat-tracker-panel';
         panel.className = 'chat-tracker-panel';
-        panel.dataset.chatTrackerBuild = CHAT_TRACKER_BUILD;
 
         const header = document.createElement('div');
         header.className = 'tracker-header';
@@ -2846,20 +2711,20 @@ function createTrackerPanel() {
                         <span class="context-percent">(0%)</span>
                     </div>
                     <div class="mode-buttons-container">
-                        <button type="button" class="mode-btn ${tokenMode === 'chat' ? 'active' : ''}" data-mode="chat" title="${trackerText('visibleChatHistory')}">CHAT</button>
-                        <button type="button" class="mode-btn ${tokenMode === 'api' ? 'active' : ''}" data-mode="api" title="${trackerText('apiPromptTokens')}">API</button>
-                        <button type="button" class="edit-limit-btn" id="edit-limit-btn" title="${trackerText('editTokenLimit')}">✎</button>
+                        <button class="mode-btn ${tokenMode === 'chat' ? 'active' : ''}" data-mode="chat" title="${trackerText('visibleChatHistory')}">CHAT</button>
+                        <button class="mode-btn ${tokenMode === 'api' ? 'active' : ''}" data-mode="api" title="${trackerText('apiPromptTokens')}">API</button>
+                        <button class="edit-limit-btn" id="edit-limit-btn" title="${trackerText('editTokenLimit')}">✎</button>
                     </div>
                 </div>
                 <div id="sunny-panel-tabs" style="display:none; width:100%; flex-direction:column; gap:4px; padding-top:2px;">
                     <div id="tracker-sunny-tools-label" style="font-size:9px; font-weight:bold; color:var(--SmartThemeQuoteColor, #ffaa00); text-align:center; letter-spacing:1px; margin-bottom:2px; opacity:0.8;">${trackerText('sunnyTools')}</div>
                     <div style="display:flex; gap:4px; width:100%;">
-                        <button type="button" class="sunny-panel-tab active" data-tab="sum">${trackerText('summaryTab')}</button>
-                        <button type="button" class="sunny-panel-tab" data-tab="facts">${trackerText('factsTab')}</button>
+                        <button class="sunny-panel-tab active" data-tab="sum">${trackerText('summaryTab')}</button>
+                        <button class="sunny-panel-tab" data-tab="facts">${trackerText('factsTab')}</button>
                     </div>
                     <div style="display:flex; gap:4px; width:100%;">
-                        <button type="button" class="sunny-panel-tab" data-tab="qc">${trackerText('questsTab')}</button>
-                        <button type="button" class="sunny-panel-tab" data-tab="lib">${trackerText('libraryTab')}</button>
+                        <button class="sunny-panel-tab" data-tab="qc">${trackerText('questsTab')}</button>
+                        <button class="sunny-panel-tab" data-tab="lib">${trackerText('libraryTab')}</button>
                     </div>
                 </div>
             </div>
@@ -2869,9 +2734,13 @@ function createTrackerPanel() {
         panel.appendChild(content);
         document.body.appendChild(panel);
 
-        bindTrackerPressAction(document.getElementById('tracker-toggle'), togglePanel);
-        bindTrackerPressAction(document.getElementById('tracker-settings-btn'), openCustomizationPopup);
-        bindTrackerPressAction(document.getElementById('edit-limit-btn'), openLimitEditor);
+        const toggleButton = document.getElementById('tracker-toggle');
+        const settingsButton = document.getElementById('tracker-settings-btn');
+        const limitButton = document.getElementById('edit-limit-btn');
+
+        toggleButton?.addEventListener('click', togglePanel);
+        bindTrackerSettingsControl(settingsButton);
+        limitButton?.addEventListener('click', openLimitEditor);
 
         const modeBtns = document.querySelectorAll('.mode-btn');
         modeBtns.forEach(btn => {
@@ -2890,16 +2759,12 @@ function createTrackerPanel() {
 
         panel.addEventListener('click', handlePanelClick);
         applyTrackerCustomization();
-        if (!isTouchLikeDevice()) {
-            setupDraggable(panel, header);
-        } else {
-            panel.dataset.trackerTouchDragDisabled = 'true';
-        }
+        // Dragging is deliberately attached only to the tracker icon. On mobile,
+        // making the whole header draggable causes browsers/WebViews to swallow
+        // taps on the settings and collapse buttons.
+        setupDraggable(panel, panel.querySelector('.tracker-icon'));
         setupResponsiveTrackerHandlers();
-    } catch (error) {
-        console.error('[ChatTracker] Panel creation failed', error);
-        try { toastr?.error?.(String(error?.message || error), 'Chat Tracker'); } catch (toastError) {}
-    }
+    } catch (error) {}
 }
 
 function setPanelCollapsed(collapsed, options = {}) {
@@ -3135,13 +3000,12 @@ function setupTokenObservers() {
 }
 
 function openLimitEditor(event) {
-    if (event) event.stopPropagation();
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
     const existingPopup = document.getElementById('tracker-limit-popup');
     if (existingPopup) {
-        if (getComputedStyle(existingPopup).display === 'none' || getComputedStyle(existingPopup).visibility === 'hidden') {
-            showTrackerPopup(existingPopup, 300);
-            return;
-        }
         existingPopup.remove();
         return;
     }
@@ -3160,17 +3024,18 @@ function openLimitEditor(event) {
                    value="${maxTokens}" min="0" max="128000" inputmode="numeric" placeholder="50000">
             <div class="tracker-limit-hint">${trackerText('tokenLimitHint')}</div>
             <div class="tracker-limit-actions">
-                <button type="button" class="tracker-dialog-btn" id="limit-cancel">${trackerText('cancel')}</button>
-                <button type="button" class="tracker-dialog-btn tracker-dialog-btn-primary" id="limit-save">${trackerText('save')}</button>
+                <button class="tracker-dialog-btn" id="limit-cancel">${trackerText('cancel')}</button>
+                <button class="tracker-dialog-btn tracker-dialog-btn-primary" id="limit-save">${trackerText('save')}</button>
             </div>
         </div>
     `;
 
     document.body.appendChild(popup);
-    showTrackerPopup(popup, 300);
+    popup.style.display = 'flex';
+    positionPopupNearPanel(popup, 300);
 
     const input = document.getElementById('limit-input');
-    if (!isTouchLikeDevice()) {
+    if (!isCompactMobileLayout()) {
         setupDraggable(popup, document.getElementById('tracker-limit-drag'));
     }
 
@@ -3319,36 +3184,32 @@ function applySavedPanelState() {
 }
 
 function setupSunnyEvents() {
-    const sunnyTrigger = document.getElementById('trigger-sunny-panel');
-    bindTrackerPressAction(sunnyTrigger, function(e) {
-        e?.stopPropagation?.();
+    $(document).on('click', '#trigger-sunny-panel', function(e) {
+        e.stopPropagation();
         if (!window.extension_settings?.SunnyMemories) {
             toastr.warning(trackerText('sunnyRequired'), trackerText('sunnyPanelName'));
             return;
         }
         isSunnyMode = !isSunnyMode;
-        const contextContainer = document.getElementById('stat-context-container');
-        const tabsContainer = document.getElementById('sunny-panel-tabs');
-        if (contextContainer) contextContainer.style.display = isSunnyMode ? 'none' : 'flex';
-        if (tabsContainer) tabsContainer.style.display = isSunnyMode ? 'flex' : 'none';
+        document.getElementById('stat-context-container').style.display = isSunnyMode ? 'none' : 'flex';
+        document.getElementById('sunny-panel-tabs').style.display = isSunnyMode ? 'flex' : 'none';
         this.style.color = isSunnyMode ? '#ffcc00' : '';
         this.style.textShadow = isSunnyMode ? '0 0 8px rgba(255, 204, 0, 0.6)' : '';
+
         if (!isSunnyMode) toggleSunnyPopup(false);
     });
 
-    document.querySelectorAll('.sunny-panel-tab').forEach(tabButton => {
-        bindTrackerPressAction(tabButton, function(e) {
-            e?.stopPropagation?.();
-            document.querySelectorAll('.sunny-panel-tab').forEach(button => button.classList.remove('active'));
-            this.classList.add('active');
+    $(document).on('click', '.sunny-panel-tab', function(e) {
+        e.stopPropagation();
+        $('.sunny-panel-tab').removeClass('active');
+        $(this).addClass('active');
 
-            const target = this.getAttribute('data-tab');
-            const title = document.getElementById('sunny-popup-title-text');
-            if (title) title.textContent = getSunnyTabTitle(target);
-            document.querySelectorAll('.sunny-tab-content').forEach(content => content.classList.remove('active'));
-            document.getElementById('sunny-tab-' + target)?.classList.add('active');
-            toggleSunnyPopup(true);
-        });
+        const target = $(this).data('tab');
+        $('#sunny-popup-title-text').text(getSunnyTabTitle(target));
+        $('.sunny-tab-content').removeClass('active');
+        $('#sunny-tab-' + target).addClass('active');
+
+        toggleSunnyPopup(true);
     });
 
     createSunnyPopup();
@@ -3939,19 +3800,19 @@ function createSunnyPopup() {
             <div class="sunny-tab-content active" id="sunny-tab-sum">
                 <textarea id="mini-sum-area" class="beautiful-textarea" placeholder="${trackerText('summaryPlaceholder')}"></textarea>
                 <div class="beautiful-actions sunny-compact-actions sunny-summary-actions">
-                    <button type="button" class="beautiful-btn beautiful-btn-primary" id="mini-sum-gen" title="${trackerText('generateSummary')}"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${trackerText('generateShort')}</span></button>
-                    <button type="button" class="beautiful-btn" id="mini-sum-restore" title="${trackerText('restore')}"><i class="fa-solid fa-rotate-left"></i><span>${trackerText('restoreShort')}</span></button>
-                    <button type="button" class="beautiful-btn" id="mini-sum-lib" title="${trackerText('toLibrary')}"><i class="fa-solid fa-book"></i><span>${trackerText('toLibraryShort')}</span></button>
+                    <button class="beautiful-btn beautiful-btn-primary" id="mini-sum-gen" title="${trackerText('generateSummary')}"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${trackerText('generateShort')}</span></button>
+                    <button class="beautiful-btn" id="mini-sum-restore" title="${trackerText('restore')}"><i class="fa-solid fa-rotate-left"></i><span>${trackerText('restoreShort')}</span></button>
+                    <button class="beautiful-btn" id="mini-sum-lib" title="${trackerText('toLibrary')}"><i class="fa-solid fa-book"></i><span>${trackerText('toLibraryShort')}</span></button>
                 </div>
             </div>
 
             <div class="sunny-tab-content" id="sunny-tab-facts">
                 <textarea id="mini-facts-area" class="beautiful-textarea" placeholder="${trackerText('factsPlaceholder')}"></textarea>
                 <div class="beautiful-actions sunny-compact-actions sunny-facts-actions">
-                    <button type="button" class="beautiful-btn beautiful-btn-primary" id="mini-facts-gen" title="${trackerText('extractFacts')}"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${trackerText('extractShort')}</span></button>
-                    <button type="button" class="beautiful-btn" id="mini-facts-restore" title="${trackerText('restore')}"><i class="fa-solid fa-rotate-left"></i><span>${trackerText('restoreShort')}</span></button>
-                    <button type="button" class="beautiful-btn" id="mini-facts-split" title="${trackerText('split')}"><i class="fa-solid fa-object-ungroup"></i><span>${trackerText('splitShort')}</span></button>
-                    <button type="button" class="beautiful-btn" id="mini-facts-lib" title="${trackerText('toLibrary')}"><i class="fa-solid fa-book"></i><span>${trackerText('toLibraryShort')}</span></button>
+                    <button class="beautiful-btn beautiful-btn-primary" id="mini-facts-gen" title="${trackerText('extractFacts')}"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${trackerText('extractShort')}</span></button>
+                    <button class="beautiful-btn" id="mini-facts-restore" title="${trackerText('restore')}"><i class="fa-solid fa-rotate-left"></i><span>${trackerText('restoreShort')}</span></button>
+                    <button class="beautiful-btn" id="mini-facts-split" title="${trackerText('split')}"><i class="fa-solid fa-object-ungroup"></i><span>${trackerText('splitShort')}</span></button>
+                    <button class="beautiful-btn" id="mini-facts-lib" title="${trackerText('toLibrary')}"><i class="fa-solid fa-book"></i><span>${trackerText('toLibraryShort')}</span></button>
                 </div>
             </div>
 
@@ -3961,8 +3822,8 @@ function createSunnyPopup() {
                     <div class="sunny-info-item"><span class="sunny-info-label">${trackerText('lastEvent')}</span><span id="mini-last-event">${trackerText('none')}</span></div>
                 </div>
                 <div class="beautiful-actions sunny-compact-actions">
-                    <button type="button" class="beautiful-btn beautiful-btn-primary" id="mini-quest-gen"><i class="fa-solid fa-scroll"></i><span>${trackerText('extractQuests')}</span></button>
-                    <button type="button" class="beautiful-btn beautiful-btn-primary" id="mini-event-gen"><i class="fa-solid fa-calendar-day"></i><span>${trackerText('extractEvents')}</span></button>
+                    <button class="beautiful-btn beautiful-btn-primary" id="mini-quest-gen"><i class="fa-solid fa-scroll"></i><span>${trackerText('extractQuests')}</span></button>
+                    <button class="beautiful-btn beautiful-btn-primary" id="mini-event-gen"><i class="fa-solid fa-calendar-day"></i><span>${trackerText('extractEvents')}</span></button>
                 </div>
             </div>
 
@@ -3973,13 +3834,13 @@ function createSunnyPopup() {
                 </div>
                 <div class="sunny-library-meta" id="mini-library-meta"></div>
                 <div class="sunny-library-list" id="mini-library-list"></div>
-                <button type="button" class="beautiful-btn sunny-open-full" id="mini-open-main"><i class="fa-solid fa-arrow-up-right-from-square"></i><span>${trackerText('openFullSunny')}</span></button>
+                <button class="beautiful-btn sunny-open-full" id="mini-open-main"><i class="fa-solid fa-arrow-up-right-from-square"></i><span>${trackerText('openFullSunny')}</span></button>
             </div>
         </div>
     `;
 
     document.body.appendChild(popup);
-    if (!isTouchLikeDevice()) {
+    if (!isCompactMobileLayout()) {
         setupDraggable(popup, document.getElementById('tracker-sunny-drag'));
     }
 
@@ -4096,7 +3957,7 @@ function toggleSunnyPopup(show) {
     if (!popup) return;
 
     if (show) {
-        showTrackerPopup(popup, 360);
+        popup.style.display = 'flex';
         miniSunnyLastBridgeSignature = '';
         miniSunnyLastLibraryRenderSignature = '';
         refreshSunnyPopupIfChanged({ force: true });
@@ -4113,44 +3974,3 @@ function toggleSunnyPopup(show) {
         stopMiniSunnyBridgeObserver();
     }
 }
-
-
-window.ChatTrackerDiagnostics = {
-    snapshot() {
-        const panel = document.getElementById('chat-tracker-panel');
-        const ids = ['tracker-customization-popup', 'tracker-limit-popup', 'tracker-sunny-popup'];
-        return {
-            build: CHAT_TRACKER_BUILD,
-            touchLikeDevice: isTouchLikeDevice(),
-            compactLayout: isCompactMobileLayout(),
-            maxTouchPoints: Number(navigator.maxTouchPoints || 0),
-            viewport: getViewportBounds(),
-            visualViewport: window.visualViewport ? {
-                width: window.visualViewport.width,
-                height: window.visualViewport.height,
-                offsetLeft: window.visualViewport.offsetLeft,
-                offsetTop: window.visualViewport.offsetTop,
-            } : null,
-            panel: panel ? {
-                className: panel.className,
-                rect: panel.getBoundingClientRect().toJSON?.() || null,
-                touchDragDisabled: panel.dataset.trackerTouchDragDisabled === 'true',
-            } : null,
-            popups: Object.fromEntries(ids.map(id => {
-                const popup = document.getElementById(id);
-                if (!popup) return [id, null];
-                const style = getComputedStyle(popup);
-                return [id, {
-                    display: style.display,
-                    visibility: style.visibility,
-                    opacity: style.opacity,
-                    zIndex: style.zIndex,
-                    rect: popup.getBoundingClientRect().toJSON?.() || null,
-                }];
-            })),
-        };
-    },
-    openSettings() { openCustomizationPopup(); },
-    openLimit() { openLimitEditor(); },
-    openSunny() { toggleSunnyPopup(true); },
-};

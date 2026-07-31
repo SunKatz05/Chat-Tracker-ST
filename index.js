@@ -2373,6 +2373,22 @@ function positionPopupNearPanel(popup, width = 320) {
     popup.style.bottom = 'auto';
 }
 
+
+function showTrackerPopup(popup, width = 320) {
+    if (!popup?.isConnected) return;
+
+    // SillyTavern mobile themes and WebViews may override the generic popup
+    // class. Keep extension dialogs in the top-level fixed layer explicitly.
+    popup.style.setProperty('display', 'flex', 'important');
+    popup.style.setProperty('position', 'fixed', 'important');
+    popup.style.setProperty('z-index', '2147483000', 'important');
+    popup.style.setProperty('pointer-events', 'auto', 'important');
+    popup.style.setProperty('visibility', 'visible', 'important');
+    popup.style.setProperty('opacity', '1', 'important');
+    popup.style.flexDirection = 'column';
+    positionPopupNearPanel(popup, width);
+}
+
 function closeCustomizationPopup() {
     if (typeof customizationPopupCleanup === 'function') {
         customizationPopupCleanup();
@@ -2393,10 +2409,7 @@ function updateTrackerRangeVisual(input) {
 }
 
 function openCustomizationPopup(event) {
-    if (event) {
-        event.preventDefault();
-        event.stopPropagation();
-    }
+    if (event) event.stopPropagation();
 
     const existing = document.getElementById('tracker-customization-popup');
     if (existing) {
@@ -2457,16 +2470,7 @@ function openCustomizationPopup(event) {
     `;
 
     document.body.appendChild(popup);
-
-    // Do not rely on generic SillyTavern popup styles here: some mobile themes
-    // override .tracker-popup positioning/display and leave the dialog behind
-    // the main UI. Inline priority keeps this extension-owned dialog visible.
-    popup.style.setProperty('display', 'flex', 'important');
-    popup.style.setProperty('position', 'fixed', 'important');
-    popup.style.setProperty('z-index', '2147483000', 'important');
-    popup.style.setProperty('pointer-events', 'auto', 'important');
-    popup.style.flexDirection = 'column';
-    positionPopupNearPanel(popup, 290);
+    showTrackerPopup(popup, 290);
     if (!isCompactMobileLayout()) {
         setupDraggable(popup, document.getElementById('tracker-customization-drag'));
     }
@@ -2604,27 +2608,107 @@ function bindTrackerPressAction(element, handler) {
     if (!element || typeof handler !== 'function' || element.dataset.trackerPressReady === 'true') return;
     element.dataset.trackerPressReady = 'true';
 
-    // Prevent the draggable header from claiming a press that starts on a real
-    // control. Keep activation on the native click event: browsers already
-    // translate touch, pen and keyboard activation into click, while manually
-    // firing on pointerup/touchend is unreliable in mobile WebViews and can
-    // conflict with the synthetic click that follows.
-    const stopDragStart = (event) => {
-        event.stopPropagation();
+    let lastActivation = 0;
+    let startX = 0;
+    let startY = 0;
+
+    const getPoint = (event) => {
+        const touch = event?.changedTouches?.[0] || event?.touches?.[0];
+        return touch || event || { clientX: 0, clientY: 0 };
+    };
+
+    const rememberStart = (event) => {
+        const point = getPoint(event);
+        startX = Number(point.clientX) || 0;
+        startY = Number(point.clientY) || 0;
+        // Do not stop pointer/touch start propagation. The drag handler already
+        // ignores buttons and controls, exactly as in the older working build.
+    };
+
+    const activate = (event, direct = false) => {
+        const now = Date.now();
+        if (now - lastActivation < 650) {
+            if (event?.cancelable) event.preventDefault();
+            event?.stopPropagation?.();
+            return;
+        }
+        lastActivation = now;
+        handler(event);
+    };
+
+    const finishDirectPress = (event) => {
+        if (event?.type === 'pointerup' && event.pointerType === 'mouse') return;
+        if (event?.isPrimary === false) return;
+        const point = getPoint(event);
+        const dx = (Number(point.clientX) || 0) - startX;
+        const dy = (Number(point.clientY) || 0) - startY;
+        if (Math.hypot(dx, dy) > 12) return;
+        activate(event, true);
     };
 
     if ('PointerEvent' in window) {
-        element.addEventListener('pointerdown', stopDragStart, { passive: true });
+        element.addEventListener('pointerdown', rememberStart, { passive: true });
+        element.addEventListener('pointerup', finishDirectPress, { passive: false });
     } else {
-        element.addEventListener('touchstart', stopDragStart, { passive: true });
-        element.addEventListener('mousedown', stopDragStart);
+        element.addEventListener('touchstart', rememberStart, { passive: true });
+        element.addEventListener('touchend', finishDirectPress, { passive: false });
     }
 
-    element.addEventListener('click', (event) => {
-        if (event.cancelable) event.preventDefault();
-        event.stopPropagation();
-        handler(event);
-    });
+    element.addEventListener('click', (event) => activate(event, false));
+}
+
+function bindDelegatedTrackerPressAction(selector, handler) {
+    const lastActivationByElement = new WeakMap();
+    const startPointByElement = new WeakMap();
+
+    const findElement = (event) => {
+        const target = event?.target;
+        return target instanceof Element ? target.closest(selector) : null;
+    };
+
+    const getPoint = (event) => event?.changedTouches?.[0] || event?.touches?.[0] || event;
+
+    const rememberStart = (event) => {
+        const element = findElement(event);
+        if (!element) return;
+        const point = getPoint(event);
+        startPointByElement.set(element, {
+            x: Number(point?.clientX) || 0,
+            y: Number(point?.clientY) || 0,
+        });
+    };
+
+    const activate = (event, isDirect) => {
+        const element = findElement(event);
+        if (!element) return;
+        if (event?.type === 'pointerup' && event.pointerType === 'mouse') return;
+        if (event?.isPrimary === false) return;
+
+        if (isDirect) {
+            const start = startPointByElement.get(element);
+            const point = getPoint(event);
+            if (start && Math.hypot((Number(point?.clientX) || 0) - start.x, (Number(point?.clientY) || 0) - start.y) > 12) return;
+        }
+
+        const now = Date.now();
+        const lastActivation = lastActivationByElement.get(element) || 0;
+        if (now - lastActivation < 650) {
+            if (event?.cancelable) event.preventDefault();
+            event?.stopPropagation?.();
+            return;
+        }
+        lastActivationByElement.set(element, now);
+        handler.call(element, event);
+    };
+
+    if ('PointerEvent' in window) {
+        document.addEventListener('pointerdown', rememberStart, { passive: true });
+        document.addEventListener('pointerup', event => activate(event, true), { passive: false });
+    } else {
+        document.addEventListener('touchstart', rememberStart, { passive: true });
+        document.addEventListener('touchend', event => activate(event, true), { passive: false });
+    }
+    document.addEventListener('click', event => activate(event, false));
 }
 
 function createTrackerPanel() {
@@ -2961,10 +3045,7 @@ function setupTokenObservers() {
 }
 
 function openLimitEditor(event) {
-    if (event) {
-        event.preventDefault();
-        event.stopPropagation();
-    }
+    if (event) event.stopPropagation();
     const existingPopup = document.getElementById('tracker-limit-popup');
     if (existingPopup) {
         existingPopup.remove();
@@ -2992,8 +3073,7 @@ function openLimitEditor(event) {
     `;
 
     document.body.appendChild(popup);
-    popup.style.display = 'flex';
-    positionPopupNearPanel(popup, 300);
+    showTrackerPopup(popup, 300);
 
     const input = document.getElementById('limit-input');
     if (!isCompactMobileLayout()) {
@@ -3145,8 +3225,8 @@ function applySavedPanelState() {
 }
 
 function setupSunnyEvents() {
-    $(document).on('click', '#trigger-sunny-panel', function(e) {
-        e.stopPropagation();
+    bindDelegatedTrackerPressAction('#trigger-sunny-panel', function(e) {
+        e?.stopPropagation?.();
         if (!window.extension_settings?.SunnyMemories) {
             toastr.warning(trackerText('sunnyRequired'), trackerText('sunnyPanelName'));
             return;
@@ -3160,8 +3240,8 @@ function setupSunnyEvents() {
         if (!isSunnyMode) toggleSunnyPopup(false);
     });
 
-    $(document).on('click', '.sunny-panel-tab', function(e) {
-        e.stopPropagation();
+    bindDelegatedTrackerPressAction('.sunny-panel-tab', function(e) {
+        e?.stopPropagation?.();
         $('.sunny-panel-tab').removeClass('active');
         $(this).addClass('active');
 
@@ -3918,7 +3998,7 @@ function toggleSunnyPopup(show) {
     if (!popup) return;
 
     if (show) {
-        popup.style.display = 'flex';
+        showTrackerPopup(popup, 360);
         miniSunnyLastBridgeSignature = '';
         miniSunnyLastLibraryRenderSignature = '';
         refreshSunnyPopupIfChanged({ force: true });

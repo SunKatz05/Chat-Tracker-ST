@@ -819,8 +819,10 @@ function setupDraggable(el, handle) {
         state.startTop = rect.top;
         state.width = rect.width;
         state.height = rect.height;
-        isDragging = true;
-        hasMoved = false;
+        if (el.id === 'chat-tracker-panel') {
+            isDragging = true;
+            hasMoved = false;
+        }
         return true;
     };
 
@@ -832,7 +834,7 @@ function setupDraggable(el, handle) {
         if (!state.moved && Math.hypot(dx, dy) < 7) return;
         if (!state.moved) {
             state.moved = true;
-            hasMoved = true;
+            if (el.id === 'chat-tracker-panel') hasMoved = true;
             el.classList.add('dragging');
         }
 
@@ -853,7 +855,7 @@ function setupDraggable(el, handle) {
     const finishDrag = (event) => {
         if (!state.active) return;
         state.active = false;
-        isDragging = false;
+        if (el.id === 'chat-tracker-panel') isDragging = false;
 
         try {
             if (state.pointerId !== null && dragHandle.hasPointerCapture?.(state.pointerId)) {
@@ -880,7 +882,9 @@ function setupDraggable(el, handle) {
 
         state.pointerId = null;
         state.moved = false;
-        setTimeout(() => { hasMoved = false; }, 360);
+        if (el.id === 'chat-tracker-panel') {
+            setTimeout(() => { hasMoved = false; }, 120);
+        }
     };
 
     if ('PointerEvent' in window) {
@@ -1269,29 +1273,12 @@ function ensureCustomizationStyles() {
         body.light-theme .tracker-settings-action:hover {
             background: rgba(0, 0, 0, 0.1);
         }
-        #chat-tracker-popup-portal {
-            position: fixed !important;
-            inset: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            height: 100vh !important;
-            height: 100dvh !important;
-            z-index: 2147483646 !important;
-            pointer-events: none !important;
-            isolation: isolate;
-        }
-        #chat-tracker-popup-portal > .tracker-popup {
-            z-index: 1 !important;
-            pointer-events: auto !important;
-            visibility: visible !important;
-        }
-
         @media (max-width: 700px), (max-width: 1024px) and (pointer: coarse) {
             .chat-tracker-panel {
                 max-width: calc(100vw - 16px) !important;
                 max-height: calc(100vh - 16px);
                 max-height: calc(100dvh - 16px);
-                touch-action: auto !important;
+                touch-action: none !important;
             }
             .chat-tracker-panel .tracker-header,
             .chat-tracker-panel.collapsed {
@@ -1340,37 +1327,37 @@ function ensureCustomizationStyles() {
                 max-height: calc(100vh - 16px) !important;
                 max-height: calc(100dvh - 16px) !important;
             }
-            .tracker-customization-popup {
-                position: fixed !important;
-                left: max(8px, env(safe-area-inset-left)) !important;
-                right: max(8px, env(safe-area-inset-right)) !important;
-                top: auto !important;
-                bottom: max(8px, env(safe-area-inset-bottom)) !important;
-                width: auto !important;
-                max-height: calc(100dvh - 16px - env(safe-area-inset-bottom)) !important;
-                border-radius: 14px !important;
-                overflow: hidden auto;
-            }
+            .tracker-customization-popup,
             #tracker-limit-popup,
             .beautiful-popup {
                 position: fixed !important;
-                left: max(8px, env(safe-area-inset-left)) !important;
-                right: max(8px, env(safe-area-inset-right)) !important;
-                top: auto !important;
-                bottom: max(8px, env(safe-area-inset-bottom)) !important;
-                width: auto !important;
-                max-height: calc(100dvh - 16px - env(safe-area-inset-bottom)) !important;
+                z-index: 2147483647 !important;
                 border-radius: 14px !important;
+                transform: none !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                isolation: auto !important;
+                contain: none !important;
+                /* Avoid Android WebView fixed-layer/backdrop-filter paint bugs. */
+                backdrop-filter: none !important;
+                -webkit-backdrop-filter: none !important;
+            }
+            .tracker-customization-popup {
+                overflow: hidden auto;
             }
             .beautiful-popup .tracker-popup-body,
             #tracker-limit-popup .tracker-popup-body {
                 overflow-y: auto;
                 overscroll-behavior: contain;
             }
+            .tracker-popup-header {
+                touch-action: none !important;
+                -webkit-user-select: none;
+                user-select: none;
+            }
             .tracker-customization-popup .tracker-popup-header {
                 min-height: 48px;
                 padding: 10px 14px;
-                touch-action: auto !important;
             }
             .tracker-customization-popup .tracker-popup-close {
                 width: 38px;
@@ -2372,15 +2359,45 @@ function applyTrackerCustomization() {
     if (content && !isCollapsed) content.style.maxHeight = '';
 }
 
+function getVisibleViewportBounds() {
+    const viewport = window.visualViewport;
+    if (viewport) {
+        return {
+            left: Math.max(0, Math.round(viewport.offsetLeft || 0)),
+            top: Math.max(0, Math.round(viewport.offsetTop || 0)),
+            width: Math.max(1, Math.round(viewport.width || window.innerWidth || 1)),
+            height: Math.max(1, Math.round(viewport.height || window.innerHeight || 1)),
+        };
+    }
+    return {
+        left: 0,
+        top: 0,
+        width: Math.max(1, Math.round(window.innerWidth || document.documentElement.clientWidth || 1)),
+        height: Math.max(1, Math.round(window.innerHeight || document.documentElement.clientHeight || 1)),
+    };
+}
+
 function positionPopupNearPanel(popup, width = 320) {
     const panel = document.getElementById('chat-tracker-panel');
     if (!panel || !popup) return;
 
     if (isCompactMobileLayout()) {
-        popup.style.left = '8px';
-        popup.style.right = '8px';
-        popup.style.top = 'auto';
-        popup.style.bottom = '8px';
+        const viewport = getVisibleViewportBounds();
+        const margin = 8;
+        const left = viewport.left + margin;
+        const top = viewport.top + margin;
+        const availableWidth = Math.max(180, viewport.width - margin * 2);
+        const availableHeight = Math.max(120, viewport.height - margin * 2);
+
+        popup.style.setProperty('position', 'fixed', 'important');
+        popup.style.setProperty('left', `${left}px`, 'important');
+        popup.style.setProperty('right', 'auto', 'important');
+        popup.style.setProperty('top', `${top}px`, 'important');
+        popup.style.setProperty('bottom', 'auto', 'important');
+        popup.style.setProperty('width', `${availableWidth}px`, 'important');
+        popup.style.setProperty('max-width', `${availableWidth}px`, 'important');
+        popup.style.setProperty('max-height', `${availableHeight}px`, 'important');
+        popup.style.setProperty('transform', 'none', 'important');
         return;
     }
 
@@ -2398,14 +2415,10 @@ function positionPopupNearPanel(popup, width = 320) {
 }
 
 function getTrackerPopupPortal() {
-    let portal = document.getElementById('chat-tracker-popup-portal');
-    if (portal) return portal;
-
-    portal = document.createElement('div');
-    portal.id = 'chat-tracker-popup-portal';
-    portal.setAttribute('aria-live', 'polite');
-    (document.body || document.documentElement).appendChild(portal);
-    return portal;
+    // The old mobile-safe version appended dialogs directly to <body>.
+    // A fixed, isolated portal can be composited but not painted by some
+    // Android WebViews (the focused input still opens the keyboard).
+    return document.body || document.documentElement;
 }
 
 function closeCustomizationPopup() {
@@ -2414,8 +2427,6 @@ function closeCustomizationPopup() {
         customizationPopupCleanup = null;
     }
     document.getElementById('tracker-customization-popup')?.remove();
-    const portal = document.getElementById('chat-tracker-popup-portal');
-    if (portal && portal.childElementCount === 0) portal.remove();
     const button = document.getElementById('tracker-settings-btn');
     if (button) button.setAttribute('aria-expanded', 'false');
 }
@@ -2502,9 +2513,7 @@ function openCustomizationPopup(event) {
     popup.style.setProperty('opacity', '1', 'important');
     popup.style.setProperty('pointer-events', 'auto', 'important');
     positionPopupNearPanel(popup, 290);
-    if (!isCompactMobileLayout()) {
-        setupDraggable(popup, document.getElementById('tracker-customization-drag'));
-    }
+    setupDraggable(popup, document.getElementById('tracker-customization-drag'));
 
     const button = document.getElementById('tracker-settings-btn');
     if (button) button.setAttribute('aria-expanded', 'true');
@@ -2596,8 +2605,12 @@ function setupResponsiveTrackerHandlers() {
             const viewport = getViewportBounds();
             const widthChanged = Math.abs(viewport.width - lastViewportWidth) > 2;
             if (!force && !widthChanged) {
-                const popup = document.getElementById('tracker-customization-popup');
-                if (popup) positionPopupNearPanel(popup, 290);
+                const settingsPopup = document.getElementById('tracker-customization-popup');
+                const limitPopup = document.getElementById('tracker-limit-popup');
+                const sunnyPopup = document.getElementById('tracker-sunny-popup');
+                if (settingsPopup) positionPopupNearPanel(settingsPopup, 290);
+                if (limitPopup) positionPopupNearPanel(limitPopup, 300);
+                if (sunnyPopup && sunnyPopup.style.display !== 'none') positionPopupNearPanel(sunnyPopup, 360);
                 return;
             }
             lastViewportWidth = viewport.width;
@@ -2608,8 +2621,12 @@ function setupResponsiveTrackerHandlers() {
             applyTrackerCustomization();
             requestAnimationFrame(() => {
                 clampElementToViewport(panel, anchor);
-                const popup = document.getElementById('tracker-customization-popup');
-                if (popup) positionPopupNearPanel(popup, 290);
+                const settingsPopup = document.getElementById('tracker-customization-popup');
+                const limitPopup = document.getElementById('tracker-limit-popup');
+                const sunnyPopup = document.getElementById('tracker-sunny-popup');
+                if (settingsPopup) positionPopupNearPanel(settingsPopup, 290);
+                if (limitPopup) positionPopupNearPanel(limitPopup, 300);
+                if (sunnyPopup && sunnyPopup.style.display !== 'none') positionPopupNearPanel(sunnyPopup, 360);
                 saveState();
             });
         }, 90);
@@ -2780,9 +2797,9 @@ function createTrackerPanel() {
         const settingsButton = document.getElementById('tracker-settings-btn');
         const limitButton = document.getElementById('edit-limit-btn');
 
-        bindReliableTrackerTap(toggleButton, togglePanel, 'trackerToggleReady');
-        bindTrackerSettingsControl(settingsButton);
-        bindReliableTrackerTap(limitButton, openLimitEditor, 'trackerLimitReady');
+        toggleButton?.addEventListener('click', togglePanel);
+        settingsButton?.addEventListener('click', openCustomizationPopup);
+        limitButton?.addEventListener('click', openLimitEditor);
 
         const modeBtns = document.querySelectorAll('.mode-btn');
         modeBtns.forEach(btn => {
@@ -2801,10 +2818,9 @@ function createTrackerPanel() {
 
         panel.addEventListener('click', handlePanelClick);
         applyTrackerCustomization();
-        // Dragging is deliberately attached only to the tracker icon. On mobile,
-        // making the whole header draggable causes browsers/WebViews to swallow
-        // taps on the settings and collapse buttons.
-        setupDraggable(panel, panel.querySelector('.tracker-icon'));
+        // Match the old mobile behavior: the expanded panel can be dragged from
+        // any non-interactive area, while buttons/inputs are excluded below.
+        setupDraggable(panel);
         setupResponsiveTrackerHandlers();
     } catch (error) {}
 }
@@ -3081,9 +3097,7 @@ function openLimitEditor(event) {
     positionPopupNearPanel(popup, 300);
 
     const input = document.getElementById('limit-input');
-    if (!isCompactMobileLayout()) {
-        setupDraggable(popup, document.getElementById('tracker-limit-drag'));
-    }
+    setupDraggable(popup, document.getElementById('tracker-limit-drag'));
 
     const closePopup = () => popup.remove();
     document.getElementById('tracker-limit-close').onclick = closePopup;
@@ -3108,10 +3122,12 @@ function openLimitEditor(event) {
         if (e.key === 'Enter') saveLimit();
         if (e.key === 'Escape') closePopup();
     });
-    setTimeout(() => {
-        input.focus();
-        input.select();
-    }, 50);
+    if (!isCompactMobileLayout()) {
+        setTimeout(() => {
+            input.focus();
+            input.select();
+        }, 50);
+    }
 }
 
 function loadMaxTokens() {
@@ -3918,9 +3934,7 @@ function createSunnyPopup() {
     getTrackerPopupPortal().appendChild(popup);
     popup.style.setProperty('position', 'fixed', 'important');
     popup.style.setProperty('pointer-events', 'auto', 'important');
-    if (!isCompactMobileLayout()) {
-        setupDraggable(popup, document.getElementById('tracker-sunny-drag'));
-    }
+    setupDraggable(popup, document.getElementById('tracker-sunny-drag'));
 
     $('#tracker-sunny-close').on('click', () => toggleSunnyPopup(false));
 

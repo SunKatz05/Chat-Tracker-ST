@@ -1299,12 +1299,12 @@ function ensureCustomizationStyles() {
             }
             .tracker-settings-btn,
             .tracker-toggle {
-                width: max(34px, calc(28px * var(--tracker-scale))) !important;
-                height: max(34px, calc(28px * var(--tracker-scale))) !important;
-                min-width: 34px !important;
-                min-height: 34px !important;
-                padding: max(5px, calc(4px * var(--tracker-scale))) !important;
-                border-radius: 8px !important;
+                width: max(28px, calc(26px * var(--tracker-scale))) !important;
+                height: max(28px, calc(26px * var(--tracker-scale))) !important;
+                min-width: 28px !important;
+                min-height: 28px !important;
+                padding: max(3px, calc(3px * var(--tracker-scale))) !important;
+                border-radius: 7px !important;
             }
             .tracker-header-actions {
                 gap: 6px !important;
@@ -1483,7 +1483,8 @@ function ensureCustomizationStyles() {
             background: rgba(0, 0, 0, 0.045);
         }
         .tracker-customization-popup {
-            width: 320px;
+            width: 296px;
+            max-width: calc(100vw - 20px);
         }
         .tracker-customization-body {
             padding: 14px !important;
@@ -2247,11 +2248,9 @@ function ensureTrackerV7Styles() {
 
         @media (max-width: 700px), (max-width: 1024px) and (pointer: coarse) {
             #tracker-customization-popup {
-                left: max(8px, env(safe-area-inset-left)) !important;
-                right: max(8px, env(safe-area-inset-right)) !important;
-                top: auto !important;
-                bottom: max(8px, env(safe-area-inset-bottom)) !important;
-                width: auto !important;
+                width: min(292px, calc(100vw - 20px)) !important;
+                max-width: calc(100vw - 20px) !important;
+                max-height: min(74vh, calc(100dvh - 84px)) !important;
                 border-radius: 14px !important;
             }
             #tracker-customization-popup .tracker-popup-header {
@@ -2259,23 +2258,23 @@ function ensureTrackerV7Styles() {
                 padding: 10px 14px !important;
             }
             #tracker-customization-popup .tracker-popup-close {
-                width: 38px !important;
-                height: 38px !important;
+                width: 30px !important;
+                height: 30px !important;
                 display: flex !important;
                 align-items: center !important;
                 justify-content: center !important;
-                margin: -6px -8px -6px 0 !important;
-                font-size: 26px !important;
+                margin: 0 !important;
+                font-size: 22px !important;
             }
             #tracker-customization-popup .tracker-customization-body {
-                padding: 14px !important;
-                gap: 14px !important;
+                padding: 12px !important;
+                gap: 10px !important;
             }
             #tracker-customization-popup .tracker-setting-row label,
             #tracker-customization-popup .tracker-setting-title,
             #tracker-customization-popup .tracker-check-label,
             #tracker-customization-popup .tracker-language-label {
-                font-size: 13px !important;
+                font-size: 12px !important;
             }
             #tracker-customization-popup .tracker-setting-control input[type="range"] {
                 min-height: 4px !important;
@@ -2296,13 +2295,13 @@ function ensureTrackerV7Styles() {
                 height: 20px !important;
             }
             #tracker-customization-popup .tracker-language-btn {
-                min-width: 54px;
-                height: 36px;
-                font-size: 12px;
+                min-width: 48px;
+                height: 32px;
+                font-size: 11px;
             }
             #tracker-customization-popup .tracker-settings-action {
-                min-height: 46px !important;
-                font-size: 12px !important;
+                min-height: 40px !important;
+                font-size: 11px !important;
             }
         }
     `;
@@ -2322,14 +2321,15 @@ function applyTrackerCustomization() {
     const collapsedBoxSize = Math.min(getCollapsedBoxSize(), Math.max(32, viewport.width - 16));
     const collapsedIconSize = getCollapsedIconSize();
     const opacityRatio = trackerCustomization.opacity / 100;
-    const panelBgDark = (0.12 + opacityRatio * 0.48).toFixed(3);
-    const panelBgLight = (0.10 + opacityRatio * 0.40).toFixed(3);
-    const statBgDark = (0.10 + opacityRatio * 0.38).toFixed(3);
-    const statBgLight = (0.08 + opacityRatio * 0.28).toFixed(3);
-    const borderDark = (0.06 + opacityRatio * 0.12).toFixed(3);
-    const borderLight = (0.05 + opacityRatio * 0.14).toFixed(3);
-    const blurPx = Math.round(4 + opacityRatio * 18);
-    const shadowOpacity = (0.28 + opacityRatio * 0.22).toFixed(3);
+    const interpolate = (min, max) => (min + opacityRatio * (max - min)).toFixed(3);
+    const panelBgDark = interpolate(0.16, 0.96);
+    const panelBgLight = interpolate(0.12, 0.92);
+    const statBgDark = interpolate(0.12, 0.84);
+    const statBgLight = interpolate(0.08, 0.80);
+    const borderDark = interpolate(0.08, 0.22);
+    const borderLight = interpolate(0.06, 0.20);
+    const blurPx = Math.round(6 + opacityRatio * 12);
+    const shadowOpacity = interpolate(0.28, 0.50);
 
     panel.style.setProperty('--tracker-scale', String(scale));
     panel.style.setProperty('--tracker-expanded-width', `${Math.round(180 * scale)}px`);
@@ -2382,12 +2382,20 @@ function positionPopupNearPanel(popup, width = 320) {
     if (!panel || !popup) return;
 
     if (isCompactMobileLayout()) {
+        if (popup.dataset.userPositioned === 'true') {
+            clampElementToViewport(popup);
+            return;
+        }
+
         const viewport = getVisibleViewportBounds();
-        const margin = 8;
-        const left = viewport.left + margin;
-        const top = viewport.top + margin;
-        const availableWidth = Math.max(180, viewport.width - margin * 2);
-        const availableHeight = Math.max(120, viewport.height - margin * 2);
+        const margin = 10;
+        const panelRect = panel.getBoundingClientRect();
+        const preferredWidth = Math.min(width, Math.max(250, viewport.width - margin * 2));
+        const availableWidth = Math.min(preferredWidth, viewport.width - margin * 2);
+        const availableHeight = Math.max(160, Math.round(viewport.height * 0.74));
+        const centeredLeft = viewport.left + Math.max(margin, Math.round((viewport.width - availableWidth) / 2));
+        const left = Math.max(viewport.left + margin, Math.min(centeredLeft, viewport.left + viewport.width - availableWidth - margin));
+        const top = Math.max(viewport.top + margin, Math.min(viewport.top + 56, Math.max(viewport.top + margin, panelRect.top - 10)));
 
         popup.style.setProperty('position', 'fixed', 'important');
         popup.style.setProperty('left', `${left}px`, 'important');
